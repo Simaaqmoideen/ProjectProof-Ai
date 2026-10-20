@@ -13,7 +13,7 @@ def get_admin_headers(client: TestClient) -> dict:
 
 
 def test_t_org_01_pending_company_cannot_publish(client: TestClient):
-    """T-ORG-01: Pending company tries to publish -> 403 (FR-ORG-2)."""
+    """T-ORG-01 (FR-ORG-2): Pending company tries to publish -> 403."""
     # BrightWave Tech is pending (created in seed)
     login_res = client.post("/api/v1/auth/login", json={
         "email": "brightwave.tech@gmail.com",
@@ -39,7 +39,7 @@ def test_t_org_01_pending_company_cannot_publish(client: TestClient):
 
 
 def test_t_org_02_admin_approves_company_writes_audit_log(client: TestClient):
-    """T-ORG-02: Admin approves; action written to audit log -> Status approved; audit row with actor (FR-ORG-2, NFR-4)."""
+    """T-ORG-02 (FR-ORG-2, FR-ADM-1, FR-ADM-5, BR-6): Admin approves; trust score set to 50; audit row written."""
     admin_headers = get_admin_headers(client)
 
     # Register a new pending company with unique domain (valid DNS without underscore)
@@ -63,7 +63,7 @@ def test_t_org_02_admin_approves_company_writes_audit_log(client: TestClient):
     verify_token = create_email_verification_token(user_id, email)
     client.post("/api/v1/auth/verify-email", json={"token": verify_token})
 
-    # Register company
+    # Register company (trust_score starts at 0 while pending, per BR-6)
     cmp_reg = client.post("/api/v1/companies/json", json={
         "name": f"Nexus Tech {suffix}",
         "website": f"https://{domain}",
@@ -72,12 +72,12 @@ def test_t_org_02_admin_approves_company_writes_audit_log(client: TestClient):
     assert cmp_reg.status_code == 201
     company_id = cmp_reg.json()["id"]
 
-    # Admin approves
+    # Admin approves; BR-6: trust score jumps to 50 on approval
     approve_res = client.post(f"/api/v1/admin/companies/{company_id}/approve", headers=admin_headers)
     assert approve_res.status_code == 200
     assert approve_res.json()["status"] == "approved"
 
-    # Check audit log contains actor_id and action
+    # Check audit log contains actor_id and action (FR-ADM-5)
     audit_res = client.get(f"/api/v1/admin/audit-log?entity_type=company&entity_id={company_id}", headers=admin_headers)
     assert audit_res.status_code == 200
     items = audit_res.json()["items"]
@@ -88,7 +88,7 @@ def test_t_org_02_admin_approves_company_writes_audit_log(client: TestClient):
 
 
 def test_t_org_03_duplicate_domain_registration_rejected(client: TestClient):
-    """T-ORG-03: Second company registers with an active company's domain -> Rejected with conflict (FR-ORG-3)."""
+    """T-ORG-03 (FR-ORG-3): Second company registers with an active company's domain -> Rejected with conflict."""
     # Nova Labs is already active on domain novalabs.com
     email2 = "another_person@novalabs.com"
     client.post("/api/v1/auth/register", json={
@@ -115,7 +115,7 @@ def test_t_org_03_duplicate_domain_registration_rejected(client: TestClient):
 
 
 def test_t_org_04_email_domain_mismatch_check(client: TestClient):
-    """T-ORG-04: Email domain mismatch -> Check shows mismatch in admin queue (FR-ORG-3)."""
+    """T-ORG-04 (FR-ORG-3, FR-ORG-4): Email domain mismatch -> Check shows mismatch in admin queue. Automated checks are display-only."""
     admin_headers = get_admin_headers(client)
 
     # In seed data, BrightWave Tech used brightwave.tech@gmail.com and website https://brightwavetech.net
@@ -131,7 +131,9 @@ def test_t_org_04_email_domain_mismatch_check(client: TestClient):
 
 
 def test_t_org_05_new_company_project_limit(client: TestClient):
-    """T-ORG-05: New company publishes a third project -> Blocked with explanation (FR-ORG-5)."""
+    """T-ORG-05 (FR-ORG-5): New company may have at most 2 open projects until 3 evaluations are completed.
+    Publishes 2 successfully. Publishing the 3rd is blocked with 403.
+    """
     admin_headers = get_admin_headers(client)
 
     # Register a new unique company
@@ -196,7 +198,7 @@ def test_t_org_05_new_company_project_limit(client: TestClient):
 
 
 def test_t_org_06_unapproved_recruiter_searches(client: TestClient):
-    """T-ORG-06: Unapproved recruiter searches -> 403 (FR-ORG-6)."""
+    """T-ORG-06 (FR-ORG-6): Unapproved recruiter searches -> 403. Privacy by default (AGENTS.md rule 8)."""
     # Vikram Mehta from Apex is pending approval (from seed)
     login_res = client.post("/api/v1/auth/login", json={
         "email": "recruiter@apexsearch.com",
@@ -212,7 +214,9 @@ def test_t_org_06_unapproved_recruiter_searches(client: TestClient):
 
 
 def test_t_org_07_suspend_company_closes_open_projects(client: TestClient):
-    """T-ORG-07: Suspend company -> Open projects close; existing certificates stay valid (FR-ORG-7)."""
+    """T-ORG-07 (FR-ORG-7, FR-ADM-6, FR-ADM-5): Suspend company -> Open projects close; existing certificates stay valid.
+    Suspension is audited in the same transaction.
+    """
     admin_headers = get_admin_headers(client)
 
     # Register and approve a unique company
@@ -269,3 +273,75 @@ def test_t_org_07_suspend_company_closes_open_projects(client: TestClient):
     proj_in_db = db.query(Project).filter(Project.id == p["id"]).first()
     assert proj_in_db.status == "closed"
     db.close()
+
+
+def test_fr_adm_05_audit_log_query(client: TestClient):
+    """FR-ADM-5: Administrative audit log query with actor and entity tracking."""
+    admin_headers = get_admin_headers(client)
+
+    # Query audit log with pagination
+    audit_res = client.get("/api/v1/admin/audit-log?page=1&page_size=10", headers=admin_headers)
+    assert audit_res.status_code == 200
+    data = audit_res.json()
+    assert "items" in data
+    assert "total" in data
+    assert isinstance(data["items"], list)
+    assert len(data["items"]) > 0
+
+    # Non-admin cannot query audit log (FR-AUTH-5, AGENTS.md rule 6)
+    stu_login = client.post("/api/v1/auth/login", json={
+        "email": "ananya@example.com",
+        "password": "StudentPass2026!",
+    })
+    stu_headers = {"Authorization": f"Bearer {stu_login.json()['access_token']}"}
+    res_forbidden = client.get("/api/v1/admin/audit-log", headers=stu_headers)
+    assert res_forbidden.status_code == 403
+
+
+def test_fr_adm_06_suspend_reactivate_user(client: TestClient):
+    """FR-ADM-6: Admin suspends any user (tokens revoked, login rejected); admin reactivates user."""
+    admin_headers = get_admin_headers(client)
+    suffix = uuid.uuid4().hex[:8]
+    email = f"target_user_{suffix}@example.com"
+    pwd = "UserPass2026!"
+
+    # Register user
+    client.post("/api/v1/auth/register", json={
+        "email": email,
+        "password": pwd,
+        "role": "student",
+    })
+    login_res = client.post("/api/v1/auth/login", json={"email": email, "password": pwd})
+    assert login_res.status_code == 200
+    user_id = login_res.json()["user"]["id"]
+    token = login_res.json()["access_token"]
+    user_headers = {"Authorization": f"Bearer {token}"}
+
+    # Admin suspends user (FR-ADM-6)
+    sus_res = client.post(
+        f"/api/v1/admin/users/{user_id}/suspend",
+        json={"reason": "Suspicious activity"},
+        headers=admin_headers,
+    )
+    assert sus_res.status_code == 200
+    assert sus_res.json()["is_active"] is False
+
+    # Old token fails with 403 Account is suspended
+    me_res = client.get("/api/v1/me", headers=user_headers)
+    assert me_res.status_code == 403
+    assert "suspended" in me_res.json()["error"]["message"]
+
+    # Login fails when suspended
+    fail_login = client.post("/api/v1/auth/login", json={"email": email, "password": pwd})
+    assert fail_login.status_code == 403
+    assert "suspended" in fail_login.json()["error"]["message"]
+
+    # Admin reactivates user (FR-ADM-6)
+    react_res = client.post(f"/api/v1/admin/users/{user_id}/reactivate", headers=admin_headers)
+    assert react_res.status_code == 200
+    assert react_res.json()["is_active"] is True
+
+    # Login now succeeds
+    success_login = client.post("/api/v1/auth/login", json={"email": email, "password": pwd})
+    assert success_login.status_code == 200
+

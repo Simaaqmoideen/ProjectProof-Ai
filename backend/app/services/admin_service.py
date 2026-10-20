@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.errors import NotFoundError
 from app.models.user import Company, RecruiterProfile, User
 from app.repositories.audit_repo import AuditRepository
@@ -44,24 +45,28 @@ class AdminService:
 
     @staticmethod
     def approve_company(db: Session, admin: User, company_id: uuid.UUID, ip: str | None = None) -> Company:
+        """FR-ADM-1: Approve company from the queue; sets trust score to 50 (BR-6) in the same transaction."""
         company = CompanyRepository.get_by_id(db, company_id)
         if not company:
             raise NotFoundError("Company not found.")
 
+        # BR-6: Trust score starts at 50 when approved.
         CompanyRepository.update_status(
             db=db,
             company_id=company_id,
             status="approved",
             reviewed_by=admin.id,
+            trust_score=settings.trust_score_initial,
         )
 
+        # FR-ADM-5: Audit every admin state change in the same transaction.
         AuditService.log(
             db=db,
             action="company_approved",
             actor_id=admin.id,
             entity_type="company",
             entity_id=str(company_id),
-            detail={"name": company.name, "trust_score": company.trust_score},
+            detail={"name": company.name, "trust_score_set": settings.trust_score_initial},
             ip=ip,
         )
 
@@ -109,6 +114,7 @@ class AdminService:
         reason: str | None = None,
         ip: str | None = None,
     ) -> Company:
+        """FR-ADM-6: Suspend company. FR-ORG-7: Close open projects. FR-ADM-5: Audit in same transaction."""
         company = CompanyRepository.get_by_id(db, company_id)
         if not company:
             raise NotFoundError("Company not found.")
@@ -123,13 +129,13 @@ class AdminService:
 
         # FR-ORG-7 & T-ORG-07: Suspending a company closes its open projects. Existing certificates stay valid.
         # Close open projects in projects table if any exist
-        # We run direct SQL update to close projects belonging to this company
         from sqlalchemy import text
         db.execute(
             text("UPDATE projects SET status = 'closed', updated_at = now() WHERE company_id = :cid AND status = 'open'"),
             {"cid": company_id},
         )
 
+        # FR-ADM-5: Audit every admin state change in the same transaction.
         AuditService.log(
             db=db,
             action="company_suspended",
@@ -226,6 +232,7 @@ class AdminService:
         reason: str | None = None,
         ip: str | None = None,
     ) -> User:
+        """FR-ADM-6: Suspend any user; revokes all active tokens."""
         user = UserRepository.get_by_id(db, target_user_id)
         if not user:
             raise NotFoundError("User not found.")
@@ -233,6 +240,7 @@ class AdminService:
         UserRepository.set_active_status(db, target_user_id, is_active=False)
         TokenRepository.revoke_all_user_tokens(db, target_user_id)
 
+        # FR-ADM-5: Audit in the same transaction.
         AuditService.log(
             db=db,
             action="user_suspended",
@@ -253,12 +261,14 @@ class AdminService:
         target_user_id: uuid.UUID,
         ip: str | None = None,
     ) -> User:
+        """FR-ADM-6: Reactivate a previously suspended user."""
         user = UserRepository.get_by_id(db, target_user_id)
         if not user:
             raise NotFoundError("User not found.")
 
         UserRepository.set_active_status(db, target_user_id, is_active=True)
 
+        # FR-ADM-5: Audit in the same transaction.
         AuditService.log(
             db=db,
             action="user_reactivated",

@@ -2,7 +2,6 @@ from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
 from app.models.user import Company, User
 from app.repositories.company_repo import CompanyRepository
@@ -92,6 +91,9 @@ class CompanyService:
             if active_companies_on_domain:
                 raise ConflictError("Another active company is already registered with this domain.")
 
+        # BR-6: Trust score starts at 50 *when approved*. It is 0 here so the
+        # automated-checks display is informational only and does not set the score.
+        # The score is set to settings.trust_score_initial (50) inside approve_company().
         company = CompanyRepository.create_company(
             db=db,
             name=name.strip(),
@@ -99,7 +101,7 @@ class CompanyService:
             email_domain=email_domain,
             description=description.strip() if description else None,
             registration_doc_key=registration_doc_key,
-            trust_score=settings.trust_score_initial,
+            trust_score=0,
             status="pending",
         )
 
@@ -110,6 +112,7 @@ class CompanyService:
             member_role="owner",
         )
 
+        # FR-ADM-5: Every company state change writes an audit_log row in the same transaction.
         AuditService.log(
             db,
             action="company_registered",

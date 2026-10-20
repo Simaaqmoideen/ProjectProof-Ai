@@ -47,7 +47,7 @@ class CompanyRepository:
         email_domain: str | None,
         description: str | None,
         registration_doc_key: str | None,
-        trust_score: int = 50,
+        trust_score: int = 0,
         status: str = "pending",
     ) -> Company:
         company = Company(
@@ -102,13 +102,18 @@ class CompanyRepository:
         status: str,
         reviewed_by: uuid.UUID | None = None,
         rejection_reason: str | None = None,
+        trust_score: int | None = None,
     ) -> None:
-        values = {
+        """Parameterised update — no string concatenation (AGENTS.md rule 5)."""
+        values: dict = {
             "status": status,
             "reviewed_by": reviewed_by,
             "reviewed_at": datetime.now(UTC),
             "rejection_reason": rejection_reason,
         }
+        # BR-6: trust_score is only updated when the admin explicitly approves.
+        if trust_score is not None:
+            values["trust_score"] = trust_score
         stmt = update(Company).where(Company.id == company_id).values(**values)
         db.execute(stmt)
 

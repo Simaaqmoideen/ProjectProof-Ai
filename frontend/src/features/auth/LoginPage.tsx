@@ -124,49 +124,51 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Demo 1-click accounts */}
-          <div className="mt-6 pt-6 border-t border-[#ebebeb]">
-            <p className="text-[11px] font-mono uppercase tracking-wider text-[#8f8f8f] mb-2.5 text-center">
-              Quick demo accounts:
-            </p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin@projectproof.ai', 'AdminSecure2026!')}
-                className="px-2.5 py-1.5 text-left border border-[#ebebeb] rounded-[4px] hover:bg-[#fafafa] transition-colors"
-              >
-                <span className="font-semibold block text-[#171717]">Admin</span>
-                <span className="font-mono text-[10px] text-[#7d7d7d]">Platform review</span>
-              </button>
+          {/* Demo 1-click accounts - hidden unless DEMO_MODE=true */}
+          {((import.meta.env.DEMO_MODE === 'true') || (import.meta.env.VITE_DEMO_MODE === 'true')) && (
+            <div className="mt-6 pt-6 border-t border-[#ebebeb]">
+              <p className="text-[11px] font-mono uppercase tracking-wider text-[#8f8f8f] mb-2.5 text-center">
+                Quick demo accounts:
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('admin@projectproof.ai', 'AdminSecure2026!')}
+                  className="px-2.5 py-1.5 text-left border border-[#ebebeb] rounded-[4px] hover:bg-[#fafafa] transition-colors"
+                >
+                  <span className="font-semibold block text-[#171717]">Admin</span>
+                  <span className="font-mono text-[10px] text-[#7d7d7d]">Platform review</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('contact@novalabs.com', 'NovaLabs2026!')}
-                className="px-2.5 py-1.5 text-left border border-[#ebebeb] rounded-[4px] hover:bg-[#fafafa] transition-colors"
-              >
-                <span className="font-semibold block text-[#171717]">Company</span>
-                <span className="font-mono text-[10px] text-[#7d7d7d]">Approved</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('contact@novalabs.com', 'NovaLabs2026!')}
+                  className="px-2.5 py-1.5 text-left border border-[#ebebeb] rounded-[4px] hover:bg-[#fafafa] transition-colors"
+                >
+                  <span className="font-semibold block text-[#171717]">Company</span>
+                  <span className="font-mono text-[10px] text-[#7d7d7d]">Approved</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('ananya@example.com', 'StudentPass2026!')}
-                className="px-2.5 py-1.5 text-left border border-[#ebebeb] rounded-[4px] hover:bg-[#fafafa] transition-colors"
-              >
-                <span className="font-semibold block text-[#171717]">Student</span>
-                <span className="font-mono text-[10px] text-[#7d7d7d]">Verified</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('ananya@example.com', 'StudentPass2026!')}
+                  className="px-2.5 py-1.5 text-left border border-[#ebebeb] rounded-[4px] hover:bg-[#fafafa] transition-colors"
+                >
+                  <span className="font-semibold block text-[#171717]">Student</span>
+                  <span className="font-mono text-[10px] text-[#7d7d7d]">Verified</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('recruiter@apexsearch.com', 'Recruiter2026!')}
-                className="px-2.5 py-1.5 text-left border border-[#ebebeb] rounded-[4px] hover:bg-[#fafafa] transition-colors"
-              >
-                <span className="font-semibold block text-[#171717]">Recruiter</span>
-                <span className="font-mono text-[10px] text-[#7d7d7d]">Apex Search</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('recruiter@apexsearch.com', 'Recruiter2026!')}
+                  className="px-2.5 py-1.5 text-left border border-[#ebebeb] rounded-[4px] hover:bg-[#fafafa] transition-colors"
+                >
+                  <span className="font-semibold block text-[#171717]">Recruiter</span>
+                  <span className="font-mono text-[10px] text-[#7d7d7d]">Apex Search</span>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="mt-6 text-center text-xs text-[#7d7d7d]">
             Don't have an account?{' '}
