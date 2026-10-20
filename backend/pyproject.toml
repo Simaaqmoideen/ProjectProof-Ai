@@ -11,3 +11,11 @@ dependencies = [
 dev = ["pytest", "pytest-asyncio", "ruff"]
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+ignore = ["B008", "BLE001"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+

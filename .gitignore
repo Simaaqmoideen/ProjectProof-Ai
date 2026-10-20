@@ -6,3 +6,5 @@ __pycache__/
 dist/
 *.log
 backups/
+*.tsbuildinfo
+.pytest_cache/
