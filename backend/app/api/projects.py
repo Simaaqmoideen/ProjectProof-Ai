@@ -1,154 +1,329 @@
+"""Projects router — HTTP layer only; business rules live in services.
+Implements: FR-PRJ-1 to FR-PRJ-8, FR-APP-10.
+API spec: docs/04-api-specification.md §Projects.
+"""
 import uuid
-from datetime import UTC
-from typing import Literal
 
-from fastapi import APIRouter, Depends, Request, status
-from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, Query, Request, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.core.errors import ForbiddenError, NotFoundError, ValidationError
-from app.deps import get_db, require_roles, require_verified_email
-from app.models.project import Milestone, Project
-from app.models.user import User
+from app.core.errors import NotFoundError
+from app.db import get_db
+from app.deps import (
+    get_optional_current_user,
+    require_company,
+    require_roles,
+    require_verified_email,
+)
+from app.models.project import Project
+from app.models.user import StudentProfile, User
 from app.repositories.company_repo import CompanyRepository
-from app.services.audit_service import AuditService
+from app.repositories.project_repo import ProjectRepository
+from app.schemas.project import (
+    MilestoneResponse,
+    PaginatedProjectsResponse,
+    ProjectCompanyInfo,
+    ProjectCreateRequest,
+    ProjectResponse,
+    ProjectUpdateRequest,
+    TaskResponse,
+)
+from app.services.match_service import MatchScoreService
+from app.services.project_service import ProjectService
 
 router = APIRouter(prefix="", tags=["Projects"])
 
 
-class CreateProjectRequest(BaseModel):
-    title: str = Field(..., min_length=3)
-    description: str = Field(..., min_length=10)
-    category: Literal["development", "data", "design", "other"] = "development"
-    difficulty: Literal["beginner", "intermediate", "advanced"]
-    duration_days: int = Field(..., ge=1, le=120)
-    max_selected: int = Field(1, ge=1)
-    xp_max: int | None = None  # Client must not provide this; if provided, reject (T-PRJ-01)
+# ── helpers ────────────────────────────────────────────────────────────────────
+
+def _build_project_response(db: Session, project: Project, viewer: User | None = None) -> dict:
+    """Assemble ProjectResponse dict; attach match info for student viewers (FR-APP-3)."""
+    skill_names = ProjectRepository.get_skill_names(db, project.id)
+
+    # Milestones + tasks
+    ms_list = []
+    for ms in project.milestones:
+        task_list = [
+            TaskResponse(id=t.id, position=t.position, title=t.title, description=t.description)
+            for t in ms.tasks
+        ]
+        ms_list.append(MilestoneResponse(
+            id=ms.id,
+            position=ms.position,
+            title=ms.title,
+            description=ms.description,
+            due_day_offset=ms.due_day_offset,
+            tasks=task_list,
+        ))
+
+    company = project.company
+    company_info = ProjectCompanyInfo(
+        id=company.id,
+        name=company.name,
+        website=company.website,
+        status=company.status,
+        trust_score=company.trust_score,
+    )
+
+    match_data = None
+    if viewer and viewer.role == "student":
+        sp = db.execute(
+            select(StudentProfile).where(StudentProfile.user_id == viewer.id)
+        ).scalar_one_or_none()
+        if sp:
+            match_data = MatchScoreService.calculate_match_score(db, viewer.id, project)
+
+    return {
+        "id": project.id,
+        "title": project.title,
+        "description": project.description,
+        "category": project.category,
+        "difficulty": project.difficulty,
+        "duration_days": project.duration_days,
+        "xp_max": project.xp_max,
+        "max_selected": project.max_selected,
+        "status": project.status,
+        "application_deadline": project.application_deadline,
+        "published_at": project.published_at,
+        "company": company_info,
+        "skills": skill_names,
+        "milestones": ms_list,
+        "created_at": project.created_at,
+        "match": match_data,
+    }
 
 
-def compute_xp_max(duration_days: int, difficulty: str) -> int:
-    base = settings.xp_base_per_day
-    cap = settings.xp_cap
-    diff_mult = settings.difficulty_multiplier.get(difficulty, 1.0)
-    eval_mult = 1.2  # Max evaluation tier multiplier
-    raw_xp = base * duration_days * diff_mult * eval_mult
-    return round(min(cap, raw_xp))
-
+# ── FR-PRJ-1: Create draft project (company) ──────────────────────────────────
 
 @router.post("/companies/me/projects", status_code=status.HTTP_201_CREATED)
-def create_project_draft(
-    data: CreateProjectRequest,
-    current_user: User = Depends(require_roles("company")),
+def create_project(
+    data: ProjectCreateRequest,
+    request: Request,
+    user_and_company: tuple = Depends(require_company),
     db: Session = Depends(get_db),
 ):
-    require_verified_email(current_user)
-
-    # T-PRJ-01: Create project with a client-supplied xp_max is rejected
-    if data.xp_max is not None:
-        raise ValidationError(
-            message="xp_max is computed by the server and cannot be specified by the client.",
-            details=[{"field": "xp_max", "issue": "read_only"}],
-        )
-
-    company = CompanyRepository.get_by_user_id(db, current_user.id)
-    if not company:
-        raise ForbiddenError("No company registered for this user.")
-
-    # Calculate xp_max on server
-    computed_xp = compute_xp_max(data.duration_days, data.difficulty)
-
-    project = Project(
-        company_id=company.id,
+    """FR-PRJ-1, T-PRJ-01: Create a project draft. xp_max is server-computed."""
+    current_user, company = user_and_company
+    project = ProjectService.create_draft(
+        db=db,
+        company=company,
         created_by=current_user.id,
-        title=data.title,
-        description=data.description,
-        category=data.category,
-        difficulty=data.difficulty,
-        duration_days=data.duration_days,
-        xp_max=computed_xp,
-        max_selected=data.max_selected,
-        status="draft",
+        data=data.model_dump(),
+        actor_ip=request.client.host if request.client else None,
     )
-    db.add(project)
-    db.flush()
+    return _build_project_response(db, project)
 
-    # Add default milestone
-    db.add(Milestone(
-        project_id=project.id,
-        position=1,
-        title="Project Completion",
-        due_day_offset=data.duration_days,
-    ))
 
-    db.commit()
-    db.refresh(project)
-    return project
+@router.get("/companies/me/projects", response_model=PaginatedProjectsResponse)
+def list_company_projects(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    user_and_company: tuple = Depends(require_company),
+    db: Session = Depends(get_db),
+):
+    """List all projects for current company (drafts, open, in_progress, closed)."""
+    current_user, company = user_and_company
+    projects, total = ProjectRepository.list_for_company(
+        db, company.id, page=page, page_size=page_size
+    )
+    items = [_build_project_response(db, p, viewer=current_user) for p in projects]
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
 
+
+# ── FR-PRJ-2: Update draft project ────────────────────────────────────────────
+
+@router.put("/projects/{project_id}")
+def update_project(
+    project_id: uuid.UUID,
+    data: ProjectUpdateRequest,
+    request: Request,
+    user_and_company: tuple = Depends(require_company),
+    db: Session = Depends(get_db),
+):
+    """FR-PRJ-2: Edit a draft project."""
+    current_user, company = user_and_company
+    project = ProjectService.update_draft(
+        db=db,
+        project_id=project_id,
+        company=company,
+        actor_id=current_user.id,
+        data=data.model_dump(exclude_unset=True),
+    )
+    return _build_project_response(db, project)
+
+
+# ── FR-PRJ-3: Publish project ─────────────────────────────────────────────────
 
 @router.post("/projects/{project_id}/publish")
 def publish_project(
     project_id: uuid.UUID,
     request: Request,
-    current_user: User = Depends(require_roles("company")),
+    user_and_company: tuple = Depends(require_company),
     db: Session = Depends(get_db),
 ):
-    require_verified_email(current_user)
-    company = CompanyRepository.get_by_user_id(db, current_user.id)
-    if not company:
-        raise ForbiddenError("No company profile found.")
-
-    # T-ORG-01 & FR-ORG-2: Pending company tries to publish -> 403
-    if company.status != "approved":
-        raise ForbiddenError(f"Company status is '{company.status}'. Only approved companies can publish projects.")
-
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project or project.company_id != company.id:
-        raise NotFoundError("Project not found.")
-
-    if project.status == "open":
-        return {"message": "Project is already published.", "id": str(project.id), "status": project.status}
-
-    # T-ORG-05 & FR-ORG-5: New company may have at most 2 open projects until it has completed 3 evaluations
-    # Count open projects for this company
-    open_count = db.query(func.count(Project.id)).filter(
-        Project.company_id == company.id,
-        Project.status == "open",
-    ).scalar()
-
-    # Count completed evaluations for this company
-    # In Phase 1, evaluations completed is 0 for a new company
-    evaluations_completed = 0  # In later phases, count from evaluations table
-
-    if evaluations_completed < settings.new_company_evaluations_needed and open_count >= settings.new_company_project_limit:
-        raise ForbiddenError(
-            f"New companies may have at most {settings.new_company_project_limit} open projects until {settings.new_company_evaluations_needed} evaluations are completed."
-        )
-
-    project.status = "open"
-    from datetime import datetime
-    project.published_at = datetime.now(UTC)
-
-    AuditService.log(
-        db,
-        action="project_published",
+    """FR-PRJ-3, FR-ORG-5, T-ORG-05: Publish a draft project."""
+    current_user, company = user_and_company
+    # Evaluations completed = 0 for Phase 2 (will be wired from evaluations table in Phase 3)
+    project = ProjectService.publish(
+        db=db,
+        project_id=project_id,
+        company=company,
         actor_id=current_user.id,
-        entity_type="project",
-        entity_id=str(project.id),
-        detail={"title": project.title, "xp_max": project.xp_max},
-        ip=request.client.host if request.client else None,
+        actor_ip=request.client.host if request.client else None,
+        evaluations_completed=0,
     )
-
-    db.commit()
-    db.refresh(project)
     return {"message": "Project published successfully.", "id": str(project.id), "status": project.status}
 
 
-@router.get("/projects")
-def list_projects(
+# ── FR-PRJ-4: Close project ───────────────────────────────────────────────────
+
+@router.post("/projects/{project_id}/close")
+def close_project(
+    project_id: uuid.UUID,
+    request: Request,
+    user_and_company: tuple = Depends(require_company),
     db: Session = Depends(get_db),
 ):
-    stmt = select(Project).where(Project.status == "open").order_by(Project.created_at.desc())
-    projects = list(db.execute(stmt).scalars().all())
-    return {"items": projects, "total": len(projects), "page": 1, "page_size": 20}
+    """FR-PRJ-4: Close an open project."""
+    current_user, company = user_and_company
+    project = ProjectService.close(
+        db=db,
+        project_id=project_id,
+        company=company,
+        actor_id=current_user.id,
+        actor_ip=request.client.host if request.client else None,
+    )
+    return {"message": "Project closed.", "id": str(project.id), "status": project.status}
+
+
+# ── FR-PRJ-5: Cancel project ─────────────────────────────────────────────────
+
+@router.post("/projects/{project_id}/cancel")
+def cancel_project(
+    project_id: uuid.UUID,
+    request: Request,
+    user_and_company: tuple = Depends(require_company),
+    db: Session = Depends(get_db),
+):
+    """FR-PRJ-5: Cancel a draft or open project."""
+    current_user, company = user_and_company
+    project = ProjectService.cancel(
+        db=db,
+        project_id=project_id,
+        company=company,
+        actor_id=current_user.id,
+        actor_ip=request.client.host if request.client else None,
+    )
+    return {"message": "Project cancelled.", "id": str(project.id), "status": project.status}
+
+
+# ── FR-PRJ-6: Browse and search open projects ─────────────────────────────────
+
+@router.get("/projects", response_model=PaginatedProjectsResponse)
+def list_projects(
+    request: Request,
+    category: str | None = Query(None),
+    difficulty: str | None = Query(None),
+    search: str | None = Query(None, max_length=200),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+):
+    """FR-PRJ-6: Browse open projects. Students see match score (FR-APP-3)."""
+    # Allow unauthenticated browsing
+    viewer = current_user
+
+    projects, total = ProjectRepository.list_open(
+        db, category=category, difficulty=difficulty, search=search,
+        page=page, page_size=page_size,
+    )
+    items = [_build_project_response(db, p, viewer=viewer) for p in projects]
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+# ── FR-PRJ-7: Get project detail ─────────────────────────────────────────────
+
+@router.get("/projects/{project_id}", response_model=ProjectResponse)
+def get_project(
+    project_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+):
+    """FR-PRJ-7: Get project details. Company can see own drafts; students/public see open projects."""
+    viewer = current_user
+
+    project = ProjectRepository.get_by_id(db, project_id)
+    if not project:
+        raise NotFoundError("Project not found.")
+
+    # Visibility: public can only see 'open'; company owner can see their own drafts
+    if project.status != "open":
+        if not viewer:
+            raise NotFoundError("Project not found.")
+        if viewer.role == "company":
+            company = CompanyRepository.get_by_user_id(db, viewer.id)
+            if not company or company.id != project.company_id:
+                raise NotFoundError("Project not found.")
+        elif viewer.role != "admin":
+            raise NotFoundError("Project not found.")
+
+    return _build_project_response(db, project, viewer=viewer)
+
+
+# ── FR-APP-10 / FR-PRJ-8: Recommended projects for student ───────────────────
+
+@router.get("/projects/recommended/list")
+def get_recommended_projects(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("student")),
+):
+    """FR-APP-10, FR-PRJ-8, BR-10: Personalised project recommendations for a student."""
+    require_verified_email(current_user)
+
+    projects, _ = ProjectRepository.list_open(db, page=1, page_size=100)
+    results = []
+    for project in projects:
+        rec = MatchScoreService.calculate_recommendation(db, current_user.id, project)
+        if rec is not None:
+            # Build rich response
+            skill_names = ProjectRepository.get_skill_names(db, project.id)
+            company = project.company
+            proj_resp = {
+                "id": project.id,
+                "title": project.title,
+                "description": project.description,
+                "category": project.category,
+                "difficulty": project.difficulty,
+                "duration_days": project.duration_days,
+                "xp_max": project.xp_max,
+                "max_selected": project.max_selected,
+                "status": project.status,
+                "application_deadline": project.application_deadline,
+                "published_at": project.published_at,
+                "company": {
+                    "id": company.id,
+                    "name": company.name,
+                    "website": company.website,
+                    "status": company.status,
+                    "trust_score": company.trust_score,
+                },
+                "skills": skill_names,
+                "milestones": [],
+                "created_at": project.created_at,
+                "match": rec["match_breakdown"],
+            }
+            results.append({
+                "project": proj_resp,
+                "recommendation_score": rec["recommendation_score"],
+                "reason": rec["reason"],
+                "match_score": rec["match_score"],
+                "match_breakdown": rec["match_breakdown"],
+                "missing_skills": rec["missing_skills"],
+            })
+
+    # Sort by recommendation_score descending
+    results.sort(key=lambda x: x["recommendation_score"], reverse=True)
+    return {"items": results[:20]}

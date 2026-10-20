@@ -10,7 +10,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import CITEXT, ENUM, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.db import Base
@@ -18,6 +18,9 @@ from app.db import Base
 DifficultyLevelEnum = ENUM('beginner', 'intermediate', 'advanced', name='difficulty_level', create_type=False)
 ProjectCategoryEnum = ENUM('development', 'data', 'design', 'other', name='project_category', create_type=False)
 ProjectStatusEnum = ENUM('draft', 'open', 'closed', 'cancelled', 'removed', name='project_status', create_type=False)
+
+
+SkillSourceEnum = ENUM('self', 'resume', 'verified_project', name='skill_source', create_type=False)
 
 
 class Project(Base):
@@ -43,6 +46,11 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
+    # Relationships
+    company = relationship("Company")
+    milestones: Mapped[list["Milestone"]] = relationship("Milestone", back_populates="project", cascade="all, delete-orphan", order_by="Milestone.position")
+    skills: Mapped[list["Skill"]] = relationship("Skill", secondary="project_skills")
+
 
 class Skill(Base):
     __tablename__ = "skills"
@@ -59,6 +67,18 @@ class ProjectSkill(Base):
     skill_id: Mapped[int] = mapped_column(Integer, ForeignKey("skills.id"), primary_key=True)
 
 
+class StudentSkill(Base):
+    __tablename__ = "student_skills"
+
+    student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("student_profiles.user_id", ondelete="CASCADE"), primary_key=True)
+    skill_id: Mapped[int] = mapped_column(Integer, ForeignKey("skills.id"), primary_key=True)
+    proficiency: Mapped[int] = mapped_column(SmallInteger, default=1, nullable=False)
+    source: Mapped[str] = mapped_column(SkillSourceEnum, default="self", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    skill = relationship("Skill")
+
+
 class Milestone(Base):
     __tablename__ = "milestones"
 
@@ -68,3 +88,22 @@ class Milestone(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     due_day_offset: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    project = relationship("Project", back_populates="milestones")
+    tasks: Mapped[list["Task"]] = relationship("Task", back_populates="milestone", cascade="all, delete-orphan", order_by="Task.position")
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    milestone_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("milestones.id", ondelete="CASCADE"), nullable=False, index=True)
+    application_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"), nullable=True)
+    position: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    milestone = relationship("Milestone", back_populates="tasks")
+

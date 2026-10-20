@@ -10,6 +10,9 @@ import { StudentDashboardPage } from '../features/student/StudentDashboardPage';
 import { CompanyDashboardPage } from '../features/company/CompanyDashboardPage';
 import { RecruiterDashboardPage } from '../features/recruiter/RecruiterDashboardPage';
 import { PublicVerificationPage } from '../features/verification/PublicVerificationPage';
+import { ProjectsBrowsePage } from '../features/projects/ProjectsBrowsePage';
+import { ProjectDetailPage } from '../features/projects/ProjectDetailPage';
+import { CompanyApplicantsPage } from '../features/company/CompanyApplicantsPage';
 
 const ProtectedRoute: React.FC<{
   children: React.ReactNode;
@@ -54,6 +57,18 @@ export const App: React.FC = () => {
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/verify" element={<PublicVerificationPage />} />
               <Route path="/verify/:id" element={<PublicVerificationPage />} />
+              <Route path="/projects" element={<ProjectsBrowsePage />} />
+              <Route path="/projects/:id" element={<ProjectDetailPage />} />
+
+              {/* Company Sub-routes */}
+              <Route
+                path="/company/projects/:projectId/applicants"
+                element={
+                  <ProtectedRoute allowedRoles={['company']}>
+                    <CompanyApplicantsPage />
+                  </ProtectedRoute>
+                }
+              />
 
               {/* Admin Routes */}
               <Route

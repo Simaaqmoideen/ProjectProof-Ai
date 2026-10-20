@@ -31,17 +31,25 @@ export const Navbar: React.FC = () => {
             </div>
           </Link>
 
-          {/* Navigation Links based on role */}
-          {user && (
-            <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
-              {user.role === 'admin' && (
-                <>
-                  <Link
-                    to="/admin/approvals"
-                    className="px-3 py-1.5 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] transition-colors"
-                  >
-                    Approvals Queue
-                  </Link>
+          {/* Navigation Links */}
+          <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
+            <Link
+              to="/projects"
+              className="px-3 py-1.5 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] transition-colors"
+            >
+              Browse Projects
+            </Link>
+
+            {user && (
+              <>
+                {user.role === 'admin' && (
+                  <>
+                    <Link
+                      to="/admin/approvals"
+                      className="px-3 py-1.5 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] transition-colors"
+                    >
+                      Approvals Queue
+                    </Link>
                   <Link
                     to="/admin/audit"
                     className="px-3 py-1.5 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] transition-colors"
@@ -80,9 +88,10 @@ export const Navbar: React.FC = () => {
                   </Link>
                 </>
               )}
-            </nav>
+            </>
           )}
-        </div>
+        </nav>
+      </div>
 
         {/* User profile / Auth buttons */}
         <div className="flex items-center gap-3">

@@ -42,6 +42,31 @@ def get_current_user(
     return user
 
 
+def get_optional_current_user(
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+    db: Session = Depends(get_db),
+) -> User | None:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+
+    token = authorization.split(" ", 1)[1].strip()
+    payload = decode_access_token(token)
+    if not payload or not payload.get("sub"):
+        return None
+
+    try:
+        user_id = uuid.UUID(payload["sub"])
+    except (ValueError, TypeError):
+        return None
+
+    user = UserRepository.get_by_id(db, user_id)
+    if not user or not user.is_active:
+        return None
+
+    return user
+
+
 def require_verified_email(user: User = Depends(get_current_user)) -> User:
     """FR-AUTH-2 & T-AUTH-02: Email must be verified before acting beyond viewing profile."""
     if user.email_verified_at is None:
@@ -56,6 +81,18 @@ def require_roles(*allowed_roles: str) -> Callable[[User], User]:
         return user
 
     return role_checker
+
+
+def require_company(
+    user: User = Depends(require_roles("company")),
+    db: Session = Depends(get_db),
+) -> tuple[User, any]:
+    """Any verified company user (including pending) can create/manage drafts."""
+    require_verified_email(user)
+    company = CompanyRepository.get_by_user_id(db, user.id)
+    if not company:
+        raise ForbiddenError("No company profile registered.")
+    return user, company
 
 
 def require_approved_company(
