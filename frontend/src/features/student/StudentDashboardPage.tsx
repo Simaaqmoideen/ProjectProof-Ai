@@ -353,10 +353,14 @@ export const StudentDashboardPage: React.FC = () => {
                           Withdraw
                         </button>
                       )}
-                      {app.status === 'in_progress' && (
-                        <span className="px-2.5 py-1 rounded-[4px] bg-[#297a3a]/10 text-[#297a3a] font-mono font-medium text-[11px]">
-                          In Progress
-                        </span>
+                      {(app.status === 'in_progress' || app.status === 'changes_requested') && (
+                        <Link
+                          to={`/student/applications/${app.id}/workspace`}
+                          className="px-2.5 py-1 rounded-[4px] text-xs font-mono font-medium inline-flex items-center gap-1 transition-colors"
+                          style={{ background: '#171717', color: '#ffffff' }}
+                        >
+                          Open Workspace →
+                        </Link>
                       )}
                     </td>
                   </tr>

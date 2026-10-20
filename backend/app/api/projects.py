@@ -153,6 +153,64 @@ def update_project(
     return _build_project_response(db, project)
 
 
+# ── FR-WRK-7: Replace milestones on a project ─────────────────────────────────
+
+from pydantic import BaseModel as _BaseModel
+from pydantic import Field as _Field
+
+from app.schemas.project import TaskCreate
+
+
+class MilestoneReplaceItem(_BaseModel):
+    position: int | None = None
+    title: str
+    description: str | None = None
+    due_day_offset: int
+    tasks: list[TaskCreate] = _Field(default_factory=list)
+
+class ReplaceMilestonesRequest(_BaseModel):
+    milestones: list[MilestoneReplaceItem]
+
+
+@router.put("/projects/{project_id}/milestones")
+def replace_project_milestones(
+    project_id: uuid.UUID,
+    data: ReplaceMilestonesRequest,
+    user_and_company: tuple = Depends(require_company),
+    db: Session = Depends(get_db),
+):
+    """FR-WRK-7, docs/04 Section 5: Replace milestones list with tasks."""
+    from app.core.errors import ConflictError
+    from app.models.application import Application
+
+    _current_user, company = user_and_company
+    project = ProjectRepository.get_company_project(db, project_id, company.id)
+    if not project:
+        raise NotFoundError("Project not found.")
+
+    # Rejected with 409 after first selection (FR-PRJ-6, docs/04 §5)
+    has_selection = db.execute(
+        select(Application.id)
+        .where(Application.project_id == project_id, Application.started_at.is_not(None))
+    ).first()
+    if has_selection:
+        raise ConflictError("Milestones and tasks are locked after the first student is selected.")
+
+    # Prepare data for repo
+    ms_data = []
+    for idx, m in enumerate(data.milestones, start=1):
+        m_dict = m.model_dump()
+        if "position" not in m_dict or not m_dict["position"]:
+            m_dict["position"] = idx
+        ms_data.append(m_dict)
+
+    ProjectRepository.replace_milestones(db, project_id, ms_data)
+    db.commit()
+    db.refresh(project)
+    return _build_project_response(db, project)
+
+
+
 # ── FR-PRJ-3: Publish project ─────────────────────────────────────────────────
 
 @router.post("/projects/{project_id}/publish")

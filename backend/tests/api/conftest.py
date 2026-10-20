@@ -48,12 +48,19 @@ def _ensure_seed_companies_active(db) -> None:
 
 def _clean_seed_student_applications(db) -> None:
     """Clear test applications for seed students so tests don't hit the 3-active application limit."""
-    from app.models.application import Application
-    seed_student_emails = ["ananya@example.com", "rohit@example.com", "priya@example.com"]
+    from sqlalchemy import text
+    seed_student_emails = ["ananya@example.com", "rohit@example.com", "priya@example.com", "dev@example.com"]
     student_users = db.query(User).filter(User.email.in_(seed_student_emails)).all()
     student_ids = [u.id for u in student_users]
     if student_ids:
-        db.query(Application).filter(Application.student_id.in_(student_ids)).delete(synchronize_session=False)
+        # Delete appeals for these students
+        db.execute(text("DELETE FROM appeals WHERE student_id = ANY(:sids)"), {"sids": student_ids})
+        # Delete uncertified applications for these students
+        db.execute(text("""
+            DELETE FROM applications
+            WHERE student_id = ANY(:sids)
+              AND id NOT IN (SELECT application_id FROM certificates)
+        """), {"sids": student_ids})
         db.commit()
 
 

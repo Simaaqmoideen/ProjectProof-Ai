@@ -13,6 +13,8 @@ import { PublicVerificationPage } from '../features/verification/PublicVerificat
 import { ProjectsBrowsePage } from '../features/projects/ProjectsBrowsePage';
 import { ProjectDetailPage } from '../features/projects/ProjectDetailPage';
 import { CompanyApplicantsPage } from '../features/company/CompanyApplicantsPage';
+import { CompanyReviewPage } from '../features/company/CompanyReviewPage';
+import { WorkspacePage } from '../features/student/WorkspacePage';
 
 const ProtectedRoute: React.FC<{
   children: React.ReactNode;
@@ -66,6 +68,26 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute allowedRoles={['company']}>
                     <CompanyApplicantsPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Student workspace (FR-WRK-1..8) */}
+              <Route
+                path="/student/applications/:id/workspace"
+                element={
+                  <ProtectedRoute allowedRoles={['student', 'company', 'admin']}>
+                    <WorkspacePage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Company review/evaluation (FR-EVL-1..7) */}
+              <Route
+                path="/company/submissions/:submissionId/review"
+                element={
+                  <ProtectedRoute allowedRoles={['company', 'admin']}>
+                    <CompanyReviewPage />
                   </ProtectedRoute>
                 }
               />

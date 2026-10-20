@@ -172,3 +172,26 @@ def reactivate_user(
     user = AdminService.reactivate_user(db, admin=admin, target_user_id=user_id, ip=ip)
     db.commit()
     return {"message": "User reactivated.", "is_active": user.is_active}
+
+
+@router.post("/jobs/check-overdue")
+def trigger_check_overdue(
+    admin: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+):
+    from app.services.scheduler import run_check_overdue_milestones
+    count = run_check_overdue_milestones(db)
+    db.commit()
+    return {"notified": count}
+
+
+@router.post("/jobs/check-late-resubmissions")
+def trigger_check_late_resubmissions(
+    admin: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+):
+    from app.services.scheduler import run_check_late_resubmissions
+    count = run_check_late_resubmissions(db)
+    db.commit()
+    return {"failed": count}
+
