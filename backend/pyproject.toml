@@ -1,0 +1,13 @@
+[project]
+name = "projectproof-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi", "uvicorn[standard]", "sqlalchemy>=2", "alembic", "psycopg[binary]",
+  "pydantic>=2", "pydantic-settings", "argon2-cffi", "pyjwt", "python-multipart",
+  "weasyprint", "qrcode[pil]", "pypdf", "httpx",
+]
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+[tool.ruff]
+line-length = 100

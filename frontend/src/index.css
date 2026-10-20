@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+/* Paste the "Tailwind v4" tab from Refero here, then keep the status tokens below.
+   Rule: components use these token classes only. No hex colours or font names in components. */
+@theme {
+  --color-canvas: #fafafa;
+  --color-surface: #ebebeb;
+  --color-ink: #171717;
+  --color-verified: #0a7d33;
+  --color-revoked: #c4231c;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --radius-control: 6px;
+}
+
+body { @apply bg-canvas text-ink font-sans; }

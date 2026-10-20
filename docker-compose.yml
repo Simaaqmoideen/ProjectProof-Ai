@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: projectproof
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports: ["5432:5432"]
+  api:
+    build: ./backend
+    env_file: .env
+    volumes: ["./backend:/app"]
+    depends_on: [db]
+    ports: ["8000:8000"]
+  frontend:
+    build: ./frontend
+    volumes: ["./frontend:/app", "/app/node_modules"]
+    depends_on: [api]
+    ports: ["5173:5173"]
+volumes:
+  pgdata:
