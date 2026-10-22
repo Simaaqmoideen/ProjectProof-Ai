@@ -5,7 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
   "fastapi", "uvicorn[standard]", "sqlalchemy>=2", "alembic", "psycopg[binary]",
   "pydantic>=2", "pydantic-settings", "argon2-cffi", "pyjwt", "python-multipart",
-  "weasyprint", "qrcode[pil]", "pypdf", "httpx",
+  "weasyprint", "qrcode[pil]", "pypdf", "httpx", "reportlab",
 ]
 [project.optional-dependencies]
 dev = ["pytest", "pytest-asyncio", "ruff"]
@@ -13,7 +13,7 @@ dev = ["pytest", "pytest-asyncio", "ruff"]
 line-length = 100
 
 [tool.ruff.lint]
-ignore = ["B008", "BLE001"]
+ignore = ["B008", "BLE001", "UP047"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

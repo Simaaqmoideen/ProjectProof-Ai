@@ -1,16 +1,42 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LogOut, ShieldCheck } from 'lucide-react';
+import { Bell, LogOut, ShieldCheck, User } from 'lucide-react';
 import { useAuth } from '../lib/auth-context';
+import { apiRequest } from '../lib/api';
 
 export const Navbar: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Poll unread count every 60 s while logged in
+  useEffect(() => {
+    if (!user) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const fetchCount = async () => {
+      try {
+        const res = await apiRequest<{ unread_count: number }>('/notifications/unread-count');
+        setUnreadCount(res.unread_count ?? 0);
+      } catch {
+        // ignore
+      }
+    };
+
+    fetchCount();
+    const timer = setInterval(fetchCount, 60_000);
+    return () => clearInterval(timer);
+  }, [user]);
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
+
+  const navLink =
+    'px-3 py-1.5 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] transition-colors';
 
   return (
     <header className="border-b border-[#ebebeb] bg-[#ffffff] sticky top-0 z-50">
@@ -32,11 +58,8 @@ export const Navbar: React.FC = () => {
           </Link>
 
           {/* Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
-            <Link
-              to="/projects"
-              className="px-3 py-1.5 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] transition-colors"
-            >
+          <nav className="hidden md:flex items-center gap-1 text-sm font-medium" aria-label="Main">
+            <Link to="/projects" className={navLink}>
               Browse Projects
             </Link>
 
@@ -44,59 +67,44 @@ export const Navbar: React.FC = () => {
               <>
                 {user.role === 'admin' && (
                   <>
-                    <Link
-                      to="/admin/approvals"
-                      className="px-3 py-1.5 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] transition-colors"
-                    >
+                    <Link to="/admin/approvals" className={navLink}>
                       Approvals Queue
                     </Link>
-                  <Link
-                    to="/admin/audit"
-                    className="px-3 py-1.5 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] transition-colors"
-                  >
-                    Audit Log
-                  </Link>
-                </>
-              )}
-              {user.role === 'company' && (
-                <>
-                  <Link
-                    to="/company"
-                    className="px-3 py-1.5 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] transition-colors"
-                  >
+                    <Link to="/admin/audit" className={navLink}>
+                      Audit Log
+                    </Link>
+                  </>
+                )}
+                {user.role === 'company' && (
+                  <Link to="/company" className={navLink}>
                     Dashboard
                   </Link>
-                </>
-              )}
-              {user.role === 'student' && (
-                <>
-                  <Link
-                    to="/student"
-                    className="px-3 py-1.5 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] transition-colors"
-                  >
-                    Projects
-                  </Link>
-                </>
-              )}
-              {user.role === 'recruiter' && (
-                <>
-                  <Link
-                    to="/recruiter"
-                    className="px-3 py-1.5 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] transition-colors"
-                  >
+                )}
+                {user.role === 'student' && (
+                  <>
+                    <Link to="/student" className={navLink}>
+                      Dashboard
+                    </Link>
+                    <Link to="/student/portfolio" className={navLink}>
+                      Portfolio
+                    </Link>
+                  </>
+                )}
+                {user.role === 'recruiter' && (
+                  <Link to="/recruiter" className={navLink}>
                     Candidates
                   </Link>
-                </>
-              )}
-            </>
-          )}
-        </nav>
-      </div>
+                )}
+              </>
+            )}
+          </nav>
+        </div>
 
         {/* User profile / Auth buttons */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {user ? (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              {/* User chip */}
               <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-[6px] border border-[#ebebeb] bg-[#fafafa] text-xs">
                 <span className="font-mono text-[#171717] truncate max-w-[160px]">
                   {user.email}
@@ -111,8 +119,36 @@ export const Navbar: React.FC = () => {
                 )}
               </div>
 
+              {/* Notifications bell */}
+              <Link
+                to="/notifications"
+                id="notifications-bell"
+                aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+                className="relative p-2 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] border border-[#ebebeb] transition-colors"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-[#171717] text-white text-[9px] font-mono px-0.5">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </Link>
+
+              {/* Profile link (student only) */}
+              {user.role === 'student' && (
+                <Link
+                  to="/student/profile"
+                  id="student-profile-link"
+                  aria-label="My profile"
+                  className="p-2 rounded-[6px] text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] border border-[#ebebeb] transition-colors"
+                >
+                  <User className="w-3.5 h-3.5" />
+                </Link>
+              )}
+
               <button
                 onClick={handleLogout}
+                id="logout-btn"
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-xs font-medium text-[#4d4d4d] hover:text-[#171717] hover:bg-[#fafafa] border border-[#ebebeb] transition-colors"
                 title="Log out"
               >

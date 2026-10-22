@@ -1,4 +1,5 @@
 """Pydantic schemas for student workspace, tasks, and milestone check-ins."""
+
 import uuid
 from datetime import datetime
 from typing import Literal

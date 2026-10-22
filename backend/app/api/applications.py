@@ -2,10 +2,11 @@
 Implements: FR-APP-1 to FR-APP-9.
 API spec: docs/04-api-specification.md §Applications.
 """
+
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError
@@ -35,6 +36,7 @@ router = APIRouter(prefix="", tags=["Applications"])
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
+
 def _get_student_info(db: Session, student_id: uuid.UUID) -> ApplicationStudentInfo | None:
     sp = db.execute(
         select(StudentProfile).where(StudentProfile.user_id == student_id)
@@ -43,12 +45,17 @@ def _get_student_info(db: Session, student_id: uuid.UUID) -> ApplicationStudentI
         return None
 
     from app.models.application import Certificate
+
     # Count verified certificates
-    verified_count = db.execute(
-        select(Certificate)
-        .join(Application, Certificate.application_id == Application.id)
-        .where(Application.student_id == student_id, Certificate.status == "issued")
-    ).scalars().all()
+    verified_count = (
+        db.execute(
+            select(Certificate)
+            .join(Application, Certificate.application_id == Application.id)
+            .where(Application.student_id == student_id, Certificate.status == "issued")
+        )
+        .scalars()
+        .all()
+    )
     xp_total = sum(c.xp_awarded for c in verified_count)
 
     skills = [
@@ -82,7 +89,9 @@ def _build_application_response(
         "student_id": application.student_id,
         "status": application.status,
         "cover_note": application.cover_note,
-        "match_score": float(application.match_score) if application.match_score is not None else None,
+        "match_score": float(application.match_score)
+        if application.match_score is not None
+        else None,
         "match_breakdown": application.match_breakdown,
         "applied_at": application.applied_at,
         "decided_at": application.decided_at,
@@ -99,6 +108,7 @@ def _build_application_response(
         project = ProjectRepository.get_by_id(db, application.project_id)
         if project:
             from app.repositories.project_repo import ProjectRepository as PR
+
             skill_names = PR.get_skill_names(db, project.id)
             company = project.company
             resp["project"] = {
@@ -130,6 +140,7 @@ def _build_application_response(
 
 # ── FR-APP-1: Student applies to a project ────────────────────────────────────
 
+
 @router.post("/projects/{project_id}/applications", status_code=status.HTTP_201_CREATED)
 def apply_to_project(
     project_id: uuid.UUID,
@@ -152,6 +163,7 @@ def apply_to_project(
 
 # ── FR-APP-2: Student withdraws an application ────────────────────────────────
 
+
 @router.post("/applications/{application_id}/withdraw")
 def withdraw_application(
     application_id: uuid.UUID,
@@ -172,6 +184,7 @@ def withdraw_application(
 
 # ── FR-APP-3: Student lists own applications ──────────────────────────────────
 
+
 @router.get("/applications/me", response_model=PaginatedApplicationsResponse)
 def list_my_applications(
     status_filter: str | None = Query(None, alias="status"),
@@ -183,15 +196,18 @@ def list_my_applications(
     """FR-APP-3: List own applications with project details."""
     require_verified_email(current_user)
     applications, total = ApplicationRepository.list_for_student(
-        db, current_user.id, status=status_filter, page=page, page_size=page_size,
+        db,
+        current_user.id,
+        status=status_filter,
+        page=page,
+        page_size=page_size,
     )
-    items = [
-        _build_application_response(db, a, include_project=True) for a in applications
-    ]
+    items = [_build_application_response(db, a, include_project=True) for a in applications]
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
 # ── FR-APP-4: Company views applicants for a project ──────────────────────────
+
 
 @router.get("/projects/{project_id}/applications")
 def list_project_applications(
@@ -209,15 +225,18 @@ def list_project_applications(
         raise NotFoundError("Project not found.")
 
     applications, total = ApplicationRepository.list_for_project(
-        db, project_id, status=status_filter, page=page, page_size=page_size,
+        db,
+        project_id,
+        status=status_filter,
+        page=page,
+        page_size=page_size,
     )
-    items = [
-        _build_application_response(db, a, include_student=True) for a in applications
-    ]
+    items = [_build_application_response(db, a, include_student=True) for a in applications]
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
 # ── FR-APP-5: Company selects an applicant ────────────────────────────────────
+
 
 @router.post("/applications/{application_id}/select")
 def select_applicant(
@@ -246,6 +265,7 @@ def select_applicant(
 
 # ── FR-APP-6: Company rejects an applicant ────────────────────────────────────
 
+
 @router.post("/applications/{application_id}/reject")
 def reject_applicant(
     application_id: uuid.UUID,
@@ -269,6 +289,7 @@ def reject_applicant(
 
 # ── FR-APP-7: Company compares applicants ────────────────────────────────────
 
+
 @router.get("/projects/{project_id}/applications/compare")
 def compare_applicants(
     project_id: uuid.UUID,
@@ -283,7 +304,11 @@ def compare_applicants(
 
     # Only compare 'applied' applications
     applications, _ = ApplicationRepository.list_for_project(
-        db, project_id, status="applied", page=1, page_size=200,
+        db,
+        project_id,
+        status="applied",
+        page=1,
+        page_size=200,
     )
 
     applicants = []
@@ -295,18 +320,20 @@ def compare_applicants(
         # Recompute match for freshness (or use stored score if identical)
         match_info = MatchScoreService.calculate_match_score(db, app.student_id, project)
 
-        applicants.append({
-            "application_id": app.id,
-            "status": app.status,
-            "student": student_info.model_dump(),
-            "cover_note": app.cover_note,
-            "match_score": match_info["score"],
-            "match_breakdown": match_info["breakdown"],
-            "missing_skills": match_info["missing_skills"],
-            "verified_projects_count": student_info.verified_projects_count,
-            "xp": student_info.xp,
-            "github_summary": student_info.github_summary,
-        })
+        applicants.append(
+            {
+                "application_id": app.id,
+                "status": app.status,
+                "student": student_info.model_dump(),
+                "cover_note": app.cover_note,
+                "match_score": match_info["score"],
+                "match_breakdown": match_info["breakdown"],
+                "missing_skills": match_info["missing_skills"],
+                "verified_projects_count": student_info.verified_projects_count,
+                "xp": student_info.xp,
+                "github_summary": student_info.github_summary,
+            }
+        )
 
     applicants.sort(key=lambda x: x["match_score"], reverse=True)
 
@@ -318,6 +345,7 @@ def compare_applicants(
 
 
 # ── FR-APP-8: Single application detail ──────────────────────────────────────
+
 
 @router.get("/applications/{application_id}")
 def get_application(
@@ -337,6 +365,7 @@ def get_application(
         return _build_application_response(db, application, include_project=True)
     elif current_user.role == "company":
         from app.repositories.company_repo import CompanyRepository
+
         company = CompanyRepository.get_by_user_id(db, current_user.id)
         if not company:
             raise NotFoundError("Application not found.")
@@ -345,6 +374,54 @@ def get_application(
             raise NotFoundError("Application not found.")
         return _build_application_response(db, application, include_student=True)
     elif current_user.role == "admin":
-        return _build_application_response(db, application, include_student=True, include_project=True)
+        return _build_application_response(
+            db, application, include_student=True, include_project=True
+        )
 
     raise NotFoundError("Application not found.")
+
+
+# ── FR-WRK-5: Mentor usage summary for company / student / admin ─────────────
+
+
+@router.get("/applications/{application_id}/mentor-usage")
+def get_mentor_usage_summary(
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """FR-WRK-5: Exchange count for mentor assistance without revealing private content."""
+    require_verified_email(current_user)
+    application = ApplicationRepository.get_by_id(db, application_id)
+    if not application:
+        raise NotFoundError("Application not found.")
+
+    # Authorization: Student owner, project company, or admin
+    if current_user.role == "student":
+        if application.student_id != current_user.id:
+            raise NotFoundError("Application not found.")
+    elif current_user.role == "company":
+        from app.repositories.company_repo import CompanyRepository
+
+        company = CompanyRepository.get_by_user_id(db, current_user.id)
+        if not company:
+            raise NotFoundError("Application not found.")
+        project = ProjectRepository.get_company_project(db, application.project_id, company.id)
+        if not project:
+            raise NotFoundError("Application not found.")
+    elif current_user.role != "admin":
+        raise NotFoundError("Application not found.")
+
+    total = (
+        db.execute(
+            text("SELECT count(*) FROM ai_logs WHERE feature = 'mentor' AND user_id = :uid"),
+            {"uid": application.student_id},
+        ).scalar()
+        or 0
+    )
+
+    return {
+        "application_id": str(application_id),
+        "total_exchanges": int(total),
+        "note": "Per privacy policy, mentor chat content is private to the student.",
+    }

@@ -2,6 +2,7 @@
 Implements: FR-PRJ-1 to FR-PRJ-8, FR-APP-10.
 API spec: docs/04-api-specification.md §Projects.
 """
+
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Request, status
@@ -37,6 +38,7 @@ router = APIRouter(prefix="", tags=["Projects"])
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
+
 def _build_project_response(db: Session, project: Project, viewer: User | None = None) -> dict:
     """Assemble ProjectResponse dict; attach match info for student viewers (FR-APP-3)."""
     skill_names = ProjectRepository.get_skill_names(db, project.id)
@@ -48,14 +50,16 @@ def _build_project_response(db: Session, project: Project, viewer: User | None =
             TaskResponse(id=t.id, position=t.position, title=t.title, description=t.description)
             for t in ms.tasks
         ]
-        ms_list.append(MilestoneResponse(
-            id=ms.id,
-            position=ms.position,
-            title=ms.title,
-            description=ms.description,
-            due_day_offset=ms.due_day_offset,
-            tasks=task_list,
-        ))
+        ms_list.append(
+            MilestoneResponse(
+                id=ms.id,
+                position=ms.position,
+                title=ms.title,
+                description=ms.description,
+                due_day_offset=ms.due_day_offset,
+                tasks=task_list,
+            )
+        )
 
     company = project.company
     company_info = ProjectCompanyInfo(
@@ -96,6 +100,7 @@ def _build_project_response(db: Session, project: Project, viewer: User | None =
 
 # ── FR-PRJ-1: Create draft project (company) ──────────────────────────────────
 
+
 @router.post("/companies/me/projects", status_code=status.HTTP_201_CREATED)
 def create_project(
     data: ProjectCreateRequest,
@@ -133,6 +138,7 @@ def list_company_projects(
 
 # ── FR-PRJ-2: Update draft project ────────────────────────────────────────────
 
+
 @router.put("/projects/{project_id}")
 def update_project(
     project_id: uuid.UUID,
@@ -168,6 +174,7 @@ class MilestoneReplaceItem(_BaseModel):
     due_day_offset: int
     tasks: list[TaskCreate] = _Field(default_factory=list)
 
+
 class ReplaceMilestonesRequest(_BaseModel):
     milestones: list[MilestoneReplaceItem]
 
@@ -190,8 +197,9 @@ def replace_project_milestones(
 
     # Rejected with 409 after first selection (FR-PRJ-6, docs/04 §5)
     has_selection = db.execute(
-        select(Application.id)
-        .where(Application.project_id == project_id, Application.started_at.is_not(None))
+        select(Application.id).where(
+            Application.project_id == project_id, Application.started_at.is_not(None)
+        )
     ).first()
     if has_selection:
         raise ConflictError("Milestones and tasks are locked after the first student is selected.")
@@ -210,8 +218,8 @@ def replace_project_milestones(
     return _build_project_response(db, project)
 
 
-
 # ── FR-PRJ-3: Publish project ─────────────────────────────────────────────────
+
 
 @router.post("/projects/{project_id}/publish")
 def publish_project(
@@ -231,10 +239,15 @@ def publish_project(
         actor_ip=request.client.host if request.client else None,
         evaluations_completed=0,
     )
-    return {"message": "Project published successfully.", "id": str(project.id), "status": project.status}
+    return {
+        "message": "Project published successfully.",
+        "id": str(project.id),
+        "status": project.status,
+    }
 
 
 # ── FR-PRJ-4: Close project ───────────────────────────────────────────────────
+
 
 @router.post("/projects/{project_id}/close")
 def close_project(
@@ -257,6 +270,7 @@ def close_project(
 
 # ── FR-PRJ-5: Cancel project ─────────────────────────────────────────────────
 
+
 @router.post("/projects/{project_id}/cancel")
 def cancel_project(
     project_id: uuid.UUID,
@@ -278,6 +292,7 @@ def cancel_project(
 
 # ── FR-PRJ-6: Browse and search open projects ─────────────────────────────────
 
+
 @router.get("/projects", response_model=PaginatedProjectsResponse)
 def list_projects(
     request: Request,
@@ -294,14 +309,39 @@ def list_projects(
     viewer = current_user
 
     projects, total = ProjectRepository.list_open(
-        db, category=category, difficulty=difficulty, search=search,
-        page=page, page_size=page_size,
+        db,
+        category=category,
+        difficulty=difficulty,
+        search=search,
+        page=page,
+        page_size=page_size,
     )
     items = [_build_project_response(db, p, viewer=viewer) for p in projects]
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
+# ── FR-APP-10 / FR-PRJ-8: Recommended projects for student ───────────────────
+
+
+@router.get("/projects/recommended")
+@router.get("/projects/recommendations")
+def get_recommended_projects(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("student")),
+):
+    """FR-APP-10, FR-PRJ-8, BR-10: Personalised project recommendations for a student."""
+    require_verified_email(current_user)
+    from app.services import recommendations as recommendations_service
+
+    return recommendations_service.get_recommended_projects(
+        db, student_id=current_user.id, page=page, page_size=page_size
+    )
+
+
 # ── FR-PRJ-7: Get project detail ─────────────────────────────────────────────
+
 
 @router.get("/projects/{project_id}", response_model=ProjectResponse)
 def get_project(
@@ -331,57 +371,58 @@ def get_project(
     return _build_project_response(db, project, viewer=viewer)
 
 
-# ── FR-APP-10 / FR-PRJ-8: Recommended projects for student ───────────────────
+# ─── Project report (FR-ADM-9) ───────────────────────────────────────────────
 
-@router.get("/projects/recommended/list")
-def get_recommended_projects(
+
+@router.post("/projects/{project_id}/report", status_code=status.HTTP_201_CREATED)
+def report_project(
+    project_id: uuid.UUID,
+    data: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles("student")),
+    current_user: User = Depends(require_roles("student", "recruiter", "company")),
 ):
-    """FR-APP-10, FR-PRJ-8, BR-10: Personalised project recommendations for a student."""
+    """FR-ADM-9, T-ADM-08: Any authenticated user can report a project; opens a manual flag."""
+    import uuid as _uuid
+
+    from sqlalchemy import text as _text
+
     require_verified_email(current_user)
 
-    projects, _ = ProjectRepository.list_open(db, page=1, page_size=100)
-    results = []
-    for project in projects:
-        rec = MatchScoreService.calculate_recommendation(db, current_user.id, project)
-        if rec is not None:
-            # Build rich response
-            skill_names = ProjectRepository.get_skill_names(db, project.id)
-            company = project.company
-            proj_resp = {
-                "id": project.id,
-                "title": project.title,
-                "description": project.description,
-                "category": project.category,
-                "difficulty": project.difficulty,
-                "duration_days": project.duration_days,
-                "xp_max": project.xp_max,
-                "max_selected": project.max_selected,
-                "status": project.status,
-                "application_deadline": project.application_deadline,
-                "published_at": project.published_at,
-                "company": {
-                    "id": company.id,
-                    "name": company.name,
-                    "website": company.website,
-                    "status": company.status,
-                    "trust_score": company.trust_score,
-                },
-                "skills": skill_names,
-                "milestones": [],
-                "created_at": project.created_at,
-                "match": rec["match_breakdown"],
-            }
-            results.append({
-                "project": proj_resp,
-                "recommendation_score": rec["recommendation_score"],
-                "reason": rec["reason"],
-                "match_score": rec["match_score"],
-                "match_breakdown": rec["match_breakdown"],
-                "missing_skills": rec["missing_skills"],
-            })
+    reason = (data.get("reason") or "").strip()
+    note = (data.get("note") or "").strip() or None
+    if not reason:
+        from app.core.errors import BadRequestError
 
-    # Sort by recommendation_score descending
-    results.sort(key=lambda x: x["recommendation_score"], reverse=True)
-    return {"items": results[:20]}
+        raise BadRequestError("reason is required.")
+
+    # Verify project exists
+    proj = db.execute(
+        _text("SELECT id FROM projects WHERE id = :pid"),
+        {"pid": project_id},
+    ).fetchone()
+    if not proj:
+        raise NotFoundError("Project not found.")
+
+    import json as _json
+
+    flag_id = _uuid.uuid4()
+    details_json = _json.dumps(
+        {
+            "reason": reason,
+            "note": note,
+            "reported_by": str(current_user.id),
+        }
+    )
+    db.execute(
+        _text("""
+            INSERT INTO flags (id, kind, entity_type, entity_id, details, status, created_at)
+            VALUES (:id, 'manual', 'project', :entity_id, CAST(:details AS jsonb), 'open', now())
+        """),
+        {
+            "id": flag_id,
+            "entity_id": project_id,
+            "details": details_json,
+        },
+    )
+    db.commit()
+    return {"message": "Report submitted. An admin will review it.", "flag_id": str(flag_id)}

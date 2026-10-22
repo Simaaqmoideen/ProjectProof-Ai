@@ -5,6 +5,7 @@ Keystone Soft as part of their scenarios, and Phase 2 project tests accumulate
 open projects that hit the FR-ORG-5 limit (max 2 open projects).
 This fixture ensures seed company/user state is clean before each test.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -26,9 +27,12 @@ def _ensure_seed_companies_active(db) -> None:
             user.is_active = True
 
         # Reapprove company if suspended/rejected
-        member = db.query(CompanyMember).join(User, CompanyMember.user_id == User.id).filter(
-            User.email == user_email
-        ).first()
+        member = (
+            db.query(CompanyMember)
+            .join(User, CompanyMember.user_id == User.id)
+            .filter(User.email == user_email)
+            .first()
+        )
         if member:
             company = db.query(Company).filter(Company.id == member.company_id).first()
             if company and company.status != "approved":
@@ -36,10 +40,14 @@ def _ensure_seed_companies_active(db) -> None:
 
             # Close all open projects from previous runs (prevents FR-ORG-5 limit breach)
             if member:
-                open_projs = db.query(Project).filter(
-                    Project.company_id == member.company_id,
-                    Project.status == "open",
-                ).all()
+                open_projs = (
+                    db.query(Project)
+                    .filter(
+                        Project.company_id == member.company_id,
+                        Project.status == "open",
+                    )
+                    .all()
+                )
                 for proj in open_projs:
                     proj.status = "closed"
 
@@ -49,18 +57,27 @@ def _ensure_seed_companies_active(db) -> None:
 def _clean_seed_student_applications(db) -> None:
     """Clear test applications for seed students so tests don't hit the 3-active application limit."""
     from sqlalchemy import text
-    seed_student_emails = ["ananya@example.com", "rohit@example.com", "priya@example.com", "dev@example.com"]
+
+    seed_student_emails = [
+        "ananya@example.com",
+        "rohit@example.com",
+        "priya@example.com",
+        "dev@example.com",
+    ]
     student_users = db.query(User).filter(User.email.in_(seed_student_emails)).all()
     student_ids = [u.id for u in student_users]
     if student_ids:
         # Delete appeals for these students
         db.execute(text("DELETE FROM appeals WHERE student_id = ANY(:sids)"), {"sids": student_ids})
         # Delete uncertified applications for these students
-        db.execute(text("""
+        db.execute(
+            text("""
             DELETE FROM applications
             WHERE student_id = ANY(:sids)
               AND id NOT IN (SELECT application_id FROM certificates)
-        """), {"sids": student_ids})
+        """),
+            {"sids": student_ids},
+        )
         db.commit()
 
 
@@ -76,6 +93,11 @@ def restore_seed_accounts():
     try:
         _ensure_seed_companies_active(db)
         _clean_seed_student_applications(db)
+        # Clear recent ai_logs so test runs don't hit the daily quota limit
+        from sqlalchemy import text
+
+        db.execute(text("DELETE FROM ai_logs"))
+        db.commit()
     finally:
         db.close()
     yield

@@ -1,4 +1,5 @@
 """Settings and business-rule numbers. Change values here, never in code (see docs/01 section 7 and AGENTS.md)."""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -72,6 +73,10 @@ class Settings(BaseSettings):
     llm_provider: str = "mock"
     llm_api_key: str = "mock"
     llm_daily_limit_per_user: int = 20
+    ai_timeout_seconds: int = 30
+    ai_max_resume_chars: int = 15_000
+    ai_max_idea_chars: int = 1_000
+    ai_max_source_chars: int = 30_000
 
     # Mail / SMTP
     smtp_url: str = ""

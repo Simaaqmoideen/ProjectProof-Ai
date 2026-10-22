@@ -9,12 +9,16 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import (
     admin,
+    ai,
     applications,
     auth,
+    certificates,
     companies,
     evaluations,
+    notifications,
     projects,
     recruiters,
+    students,
     workspace,
 )
 from app.config import settings
@@ -95,4 +99,7 @@ app.include_router(projects.router, prefix="/api/v1")
 app.include_router(applications.router, prefix="/api/v1")
 app.include_router(workspace.router, prefix="/api/v1")
 app.include_router(evaluations.router, prefix="/api/v1")
-
+app.include_router(certificates.router, prefix="/api/v1")
+app.include_router(students.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
+app.include_router(ai.router, prefix="/api/v1")

@@ -44,7 +44,9 @@ class AdminService:
         return results
 
     @staticmethod
-    def approve_company(db: Session, admin: User, company_id: uuid.UUID, ip: str | None = None) -> Company:
+    def approve_company(
+        db: Session, admin: User, company_id: uuid.UUID, ip: str | None = None
+    ) -> Company:
         """FR-ADM-1: Approve company from the queue; sets trust score to 50 (BR-6) in the same transaction."""
         company = CompanyRepository.get_by_id(db, company_id)
         if not company:
@@ -130,8 +132,11 @@ class AdminService:
         # FR-ORG-7 & T-ORG-07: Suspending a company closes its open projects. Existing certificates stay valid.
         # Close open projects in projects table if any exist
         from sqlalchemy import text
+
         db.execute(
-            text("UPDATE projects SET status = 'closed', updated_at = now() WHERE company_id = :cid AND status = 'open'"),
+            text(
+                "UPDATE projects SET status = 'closed', updated_at = now() WHERE company_id = :cid AND status = 'open'"
+            ),
             {"cid": company_id},
         )
 
@@ -150,7 +155,9 @@ class AdminService:
         return company
 
     @staticmethod
-    def get_recruiter_queue(db: Session, status: str | None = "pending") -> list[RecruiterApprovalItem]:
+    def get_recruiter_queue(
+        db: Session, status: str | None = "pending"
+    ) -> list[RecruiterApprovalItem]:
         items = RecruiterRepository.list_by_status(db, status=status)
         return [
             RecruiterApprovalItem(
@@ -166,7 +173,9 @@ class AdminService:
         ]
 
     @staticmethod
-    def approve_recruiter(db: Session, admin: User, user_id: uuid.UUID, ip: str | None = None) -> RecruiterProfile:
+    def approve_recruiter(
+        db: Session, admin: User, user_id: uuid.UUID, ip: str | None = None
+    ) -> RecruiterProfile:
         recruiter = RecruiterRepository.get_by_user_id(db, user_id)
         if not recruiter:
             raise NotFoundError("Recruiter not found.")

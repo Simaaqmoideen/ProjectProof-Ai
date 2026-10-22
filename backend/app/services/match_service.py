@@ -1,6 +1,7 @@
 """BR-3 Match score and BR-10 Recommendation score calculations.
 Deterministic algorithms implemented strictly from docs/06-ai-modules-specification.md section 5.
 """
+
 import uuid
 from typing import Any
 
@@ -18,11 +19,11 @@ DIFFICULTY_LEVEL_MAP = {
 }
 
 DIFFICULTY_FIT_TABLE = {
-    0: 100,   # Same level
-    -1: 80,   # One step easier (project beginner vs student intermediate)
-    1: 60,    # One step harder (project intermediate vs student beginner)
-    -2: 50,   # Two steps easier (project beginner vs student advanced)
-    2: 25,    # Two steps harder (project advanced vs student beginner)
+    0: 100,  # Same level
+    -1: 80,  # One step easier (project beginner vs student intermediate)
+    1: 60,  # One step harder (project intermediate vs student beginner)
+    -2: 50,  # Two steps easier (project beginner vs student advanced)
+    2: 25,  # Two steps harder (project advanced vs student beginner)
 }
 
 
@@ -39,24 +40,21 @@ class MatchScoreService:
         # 1. Fetch project required skills
         proj_skill_ids = [
             ps.skill_id
-            for ps in db.execute(
-                select(ProjectSkill).where(ProjectSkill.project_id == project.id)
-            ).scalars().all()
+            for ps in db.execute(select(ProjectSkill).where(ProjectSkill.project_id == project.id))
+            .scalars()
+            .all()
         ]
 
         # 2. Fetch student skills
         student_skills = list(
-            db.execute(
-                select(StudentSkill).where(StudentSkill.student_id == student_id)
-            ).scalars().all()
+            db.execute(select(StudentSkill).where(StudentSkill.student_id == student_id))
+            .scalars()
+            .all()
         )
         student_skill_map = {ss.skill_id: ss for ss in student_skills}
 
         # Fetch skill details for missing skills output
-        all_skills_map = {
-            s.id: s.name
-            for s in db.execute(select(Skill)).scalars().all()
-        }
+        all_skills_map = {s.id: s.name for s in db.execute(select(Skill)).scalars().all()}
 
         # Calculate Skills Part (0 to 100)
         # Credit 1.0 if proficiency >= 3 or source == 'verified_project'; 0.5 if proficiency 1 or 2; otherwise 0.
@@ -112,8 +110,12 @@ class MatchScoreService:
             for cert, completed_proj in issued_certs:
                 comp_skills = set(
                     db.execute(
-                        select(ProjectSkill.skill_id).where(ProjectSkill.project_id == completed_proj.id)
-                    ).scalars().all()
+                        select(ProjectSkill.skill_id).where(
+                            ProjectSkill.project_id == completed_proj.id
+                        )
+                    )
+                    .scalars()
+                    .all()
                 )
                 if comp_skills.intersection(proj_skill_ids):
                     relevant_certs_count += 1
@@ -127,12 +129,16 @@ class MatchScoreService:
 
         # Calculate Availability Part (0 to 100)
         # By student's current in_progress applications: 0 gives 100, 1 gives 80, 2 gives 50, 3+ gives 20
-        active_apps_count = db.execute(
-            select(Application).where(
-                Application.student_id == student_id,
-                Application.status.in_(["in_progress", "submitted", "changes_requested"]),
+        active_apps_count = (
+            db.execute(
+                select(Application).where(
+                    Application.student_id == student_id,
+                    Application.status.in_(["in_progress", "submitted", "changes_requested"]),
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         active_count = len(list(active_apps_count))
 
         if active_count == 0:
@@ -186,22 +192,30 @@ class MatchScoreService:
         Returns None if student already applied or has >= 3 active applications.
         """
         # Check active applications limit (>= 3 active projects are not recommended)
-        active_apps = list(db.execute(
-            select(Application).where(
-                Application.student_id == student_id,
-                Application.status.in_(["in_progress", "submitted", "changes_requested"]),
+        active_apps = list(
+            db.execute(
+                select(Application).where(
+                    Application.student_id == student_id,
+                    Application.status.in_(["in_progress", "submitted", "changes_requested"]),
+                )
             )
-        ).scalars().all())
+            .scalars()
+            .all()
+        )
         if len(active_apps) >= 3:
             return None
 
         # Check if already applied to this project
-        already_applied = db.execute(
-            select(Application).where(
-                Application.student_id == student_id,
-                Application.project_id == project.id,
+        already_applied = (
+            db.execute(
+                select(Application).where(
+                    Application.student_id == student_id,
+                    Application.project_id == project.id,
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if already_applied:
             return None
 
@@ -219,7 +233,9 @@ class MatchScoreService:
                     Application.student_id == student_id,
                     Certificate.status == "issued",
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         category_match = project.category in completed_categories
         category_bonus = settings.recommend_category_bonus if category_match else 0
@@ -233,9 +249,11 @@ class MatchScoreService:
 
         # Assemble one-line human-readable reason
         # Total skills required
-        proj_skill_count = len(db.execute(
-            select(ProjectSkill).where(ProjectSkill.project_id == project.id)
-        ).scalars().all())
+        proj_skill_count = len(
+            db.execute(select(ProjectSkill).where(ProjectSkill.project_id == project.id))
+            .scalars()
+            .all()
+        )
         matched_count = max(0, proj_skill_count - len(missing_skills))
 
         reasons: list[str] = []

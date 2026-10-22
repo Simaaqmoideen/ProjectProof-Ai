@@ -2,6 +2,7 @@
 FR-APP-1 to FR-APP-9, BR-3.
 Authorization order: role → ownership → state (AGENTS.md rule 6).
 """
+
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -37,7 +38,9 @@ class ApplicationService:
         # FR-APP-1: Max 3 active applications per student
         active_count = ApplicationRepository.count_active_for_student(db, student_id)
         if active_count >= 3:
-            raise ForbiddenError("You already have 3 active projects. Complete or withdraw one first.")
+            raise ForbiddenError(
+                "You already have 3 active projects. Complete or withdraw one first."
+            )
 
         # BR-3: Compute and persist match score immediately on apply
         match_info = MatchScoreService.calculate_match_score(db, student_id, project)

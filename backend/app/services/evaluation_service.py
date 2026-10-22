@@ -1,6 +1,7 @@
 """Evaluation service: deliverable submissions, evaluations, appeals, and certificate issuance.
 See docs/01 FR-EVL-1 to 7, BR-1, BR-7, docs/04 Section 7.
 """
+
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -69,7 +70,9 @@ class EvaluationService:
 
         # Notify company of new submission
         comp_member = self.db.execute(
-            text("SELECT user_id FROM company_members WHERE company_id = :comp_id ORDER BY member_role = 'owner' DESC LIMIT 1"),
+            text(
+                "SELECT user_id FROM company_members WHERE company_id = :comp_id ORDER BY member_role = 'owner' DESC LIMIT 1"
+            ),
             {"comp_id": app_data["company_id"]},
         ).fetchone()
         if comp_member:
@@ -81,7 +84,6 @@ class EvaluationService:
                 body=f"{app_data['student_name']} submitted deliverable version {new_version} for '{app_data['project_title']}'.",
                 link=f"/company/submissions/{sub_id}/review",
             )
-
 
         self.db.commit()
         sub_data = self.repo.get_submission(sub_id)
@@ -99,7 +101,9 @@ class EvaluationService:
                 raise HTTPException(status_code=404, detail="Submission not found")
         elif current_user.role == "company":
             membership = self.db.execute(
-                text("SELECT member_role FROM company_members WHERE company_id = :comp_id AND user_id = :user_id"),
+                text(
+                    "SELECT member_role FROM company_members WHERE company_id = :comp_id AND user_id = :user_id"
+                ),
                 {"comp_id": sub_data["company_id"], "user_id": current_user.id},
             ).fetchone()
             if not membership:
@@ -120,7 +124,9 @@ class EvaluationService:
         # Check reviewer belongs to project's company (T-EVL-04: Reviewer from another company evaluates -> 404)
         if current_user.role == "company":
             membership = self.db.execute(
-                text("SELECT member_role FROM company_members WHERE company_id = :comp_id AND user_id = :user_id"),
+                text(
+                    "SELECT member_role FROM company_members WHERE company_id = :comp_id AND user_id = :user_id"
+                ),
                 {"comp_id": sub_data["company_id"], "user_id": current_user.id},
             ).fetchone()
             if not membership:
@@ -131,7 +137,9 @@ class EvaluationService:
         # Check if already evaluated
         existing_eval = self.repo.get_evaluation_by_submission(submission_id)
         if existing_eval:
-            raise HTTPException(status_code=409, detail="This submission has already been evaluated")
+            raise HTTPException(
+                status_code=409, detail="This submission has already been evaluated"
+            )
 
         # Business rule check: overall_score < 60 cannot be approved (T-EVL-03)
         if req.decision == "approved" and req.overall_score < 60:
@@ -224,7 +232,9 @@ class EvaluationService:
                 raise HTTPException(status_code=404, detail="Evaluation not found")
         elif current_user.role == "company":
             membership = self.db.execute(
-                text("SELECT member_role FROM company_members WHERE company_id = :comp_id AND user_id = :user_id"),
+                text(
+                    "SELECT member_role FROM company_members WHERE company_id = :comp_id AND user_id = :user_id"
+                ),
                 {"comp_id": eval_data["company_id"], "user_id": current_user.id},
             ).fetchone()
             if not membership:
@@ -272,11 +282,16 @@ class EvaluationService:
             reason=req.reason,
         )
 
-        appeal_row = self.db.execute(
-            text("SELECT id, evaluation_id, student_id, reason, status, resolved_by, resolution_note, created_at, resolved_at FROM appeals WHERE id = :id"),
-            {"id": appeal_id},
-        ).mappings().fetchone()
+        appeal_row = (
+            self.db.execute(
+                text(
+                    "SELECT id, evaluation_id, student_id, reason, status, resolved_by, resolution_note, created_at, resolved_at FROM appeals WHERE id = :id"
+                ),
+                {"id": appeal_id},
+            )
+            .mappings()
+            .fetchone()
+        )
 
         self.db.commit()
         return AppealResponse(**dict(appeal_row))
-

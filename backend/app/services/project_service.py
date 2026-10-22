@@ -2,6 +2,7 @@
 FR-PRJ-1 to FR-PRJ-8, FR-ORG-5, BR-1.
 Authorization order: role → ownership → state (AGENTS.md rule 6).
 """
+
 import uuid
 from datetime import UTC, datetime
 
@@ -67,15 +68,20 @@ class ProjectService:
         # Replace milestones (if provided), otherwise add default
         milestones = data.get("milestones", [])
         if milestones:
-            ProjectRepository.replace_milestones(db, project.id, [m.model_dump() for m in milestones])
+            ProjectRepository.replace_milestones(
+                db, project.id, [m.model_dump() for m in milestones]
+            )
         else:
             from app.models.project import Milestone
-            db.add(Milestone(
-                project_id=project.id,
-                position=1,
-                title="Project Completion",
-                due_day_offset=data["duration_days"],
-            ))
+
+            db.add(
+                Milestone(
+                    project_id=project.id,
+                    position=1,
+                    title="Project Completion",
+                    due_day_offset=data["duration_days"],
+                )
+            )
 
         db.commit()
         db.refresh(project)
@@ -105,7 +111,15 @@ class ProjectService:
             )
 
         update_fields: dict = {}
-        for field in ("title", "description", "category", "difficulty", "duration_days", "max_selected", "application_deadline"):
+        for field in (
+            "title",
+            "description",
+            "category",
+            "difficulty",
+            "duration_days",
+            "max_selected",
+            "application_deadline",
+        ):
             if data.get(field) is not None:
                 update_fields[field] = data[field]
 
@@ -121,7 +135,9 @@ class ProjectService:
             ProjectRepository.replace_skills(db, project_id, data["skills"])
 
         if "milestones" in data and data["milestones"] is not None:
-            ProjectRepository.replace_milestones(db, project_id, [m.model_dump() for m in data["milestones"]])
+            ProjectRepository.replace_milestones(
+                db, project_id, [m.model_dump() for m in data["milestones"]]
+            )
 
         db.commit()
         db.refresh(project)

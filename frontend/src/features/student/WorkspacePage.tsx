@@ -191,6 +191,18 @@ export const WorkspacePage: React.FC = () => {
   const [subBusy, setSubBusy]           = useState(false);
   const [subErr, setSubErr]             = useState<string | null>(null);
 
+  // AI Mentor state (FR-WRK-5)
+  const [mentorMid, setMentorMid]       = useState<string>('');
+  const [mentorMsg, setMentorMsg]       = useState('');
+  const [mentorBusy, setMentorBusy]     = useState(false);
+  const [mentorErr, setMentorErr]       = useState<string | null>(null);
+  const [mentorChatHistory, setMentorChatHistory] = useState<Array<{
+    q: string;
+    ans: string;
+    nextSteps: string[];
+    time: string;
+  }>>([]);
+
   const fetchWorkspace = useCallback(async () => {
     if (!id) return;
     try {
@@ -198,6 +210,7 @@ export const WorkspacePage: React.FC = () => {
       setWorkspace(data);
       if (data.milestones.length > 0) {
         setExpandedMs(prev => { const s = new Set(prev); s.add(data.milestones[0].id); return s; });
+        setMentorMid(prev => prev || data.milestones[0].id);
       }
     } catch (e) {
       setError(e instanceof ApiException ? e.message : 'Failed to load workspace');
@@ -205,6 +218,39 @@ export const WorkspacePage: React.FC = () => {
   }, [id]);
 
   useEffect(() => { fetchWorkspace(); }, [fetchWorkspace]);
+
+  const askMentor = async () => {
+    if (!id || !mentorMsg.trim() || !mentorMid) return;
+    setMentorBusy(true);
+    setMentorErr(null);
+    try {
+      const res = await apiRequest<{
+        ai: { label: string };
+        result: { response: string; suggested_next_steps: string[] };
+      }>('/ai/mentor/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          application_id: id,
+          milestone_id: mentorMid,
+          message: mentorMsg.trim(),
+        }),
+      });
+      setMentorChatHistory(prev => [
+        {
+          q: mentorMsg.trim(),
+          ans: res.result.response,
+          nextSteps: res.result.suggested_next_steps || [],
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+        ...prev,
+      ]);
+      setMentorMsg('');
+    } catch (e) {
+      setMentorErr(e instanceof ApiException ? e.message : 'Mentor consultation failed');
+    } finally {
+      setMentorBusy(false);
+    }
+  };
 
   const toggleMs = (mid: string) =>
     setExpandedMs(prev => { const s = new Set(prev); s.has(mid) ? s.delete(mid) : s.add(mid); return s; });
@@ -637,6 +683,108 @@ export const WorkspacePage: React.FC = () => {
                 Maximum 3 submissions reached
               </p>
             )}
+          </div>
+
+          {/* AI Mentor Card (FR-WRK-5) */}
+          <div className="rounded-[6px] p-4"
+            style={{ background: '#ffffff', boxShadow: '0 0 0 1px rgba(0,0,0,0.08), 0 0 0 2px #fafafa' }}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-sm" style={{ color: '#297a3a' }}>✦</span>
+                <h3 className="font-mono text-[11px] uppercase tracking-widest" style={{ color: '#171717' }}>
+                  AI Mentor
+                </h3>
+              </div>
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-[4px]"
+                style={{ background: '#f5f5f5', color: '#737373', border: '1px solid #e5e5e5' }}>
+                AI draft
+              </span>
+            </div>
+            <p className="text-xs mb-3" style={{ color: '#737373' }}>
+              Socratic guidance & hints for your active milestones. Company only sees exchange count.
+            </p>
+
+            {/* Milestone selector */}
+            {workspace.milestones.length > 0 && (
+              <div className="mb-2">
+                <label className="block font-mono text-[10px] uppercase tracking-wider mb-1" style={{ color: '#8f8f8f' }}>
+                  Context Milestone
+                </label>
+                <select
+                  value={mentorMid}
+                  onChange={e => setMentorMid(e.target.value)}
+                  className="w-full text-xs px-2.5 py-1.5 rounded-[6px] outline-none"
+                  style={{ border: '1px solid #ebebeb', background: '#fafafa', color: '#171717' }}
+                >
+                  {workspace.milestones.map((m, idx) => (
+                    <option key={m.id} value={m.id}>
+                      M{idx + 1}: {m.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Chat history list */}
+            {mentorChatHistory.length > 0 && (
+              <div className="space-y-2 mb-3 max-h-48 overflow-y-auto pr-1">
+                {mentorChatHistory.map((item, i) => (
+                  <div key={i} className="p-2.5 rounded-[6px] text-xs space-y-1.5"
+                    style={{ background: '#fafafa', border: '1px solid #ebebeb' }}>
+                    <div className="flex justify-between items-center text-[10px] font-mono" style={{ color: '#8f8f8f' }}>
+                      <span className="font-semibold text-[#171717]">You</span>
+                      <span>{item.time}</span>
+                    </div>
+                    <p style={{ color: '#4d4d4d' }}>{item.q}</p>
+                    <div className="pt-1.5 border-t border-[#ebebeb]">
+                      <div className="flex items-center gap-1 text-[10px] font-mono mb-1" style={{ color: '#297a3a' }}>
+                        <span>✦ Socratic Hint</span>
+                      </div>
+                      <p className="leading-relaxed" style={{ color: '#171717' }}>{item.ans}</p>
+                      {item.nextSteps && item.nextSteps.length > 0 && (
+                        <div className="mt-1.5">
+                          <p className="font-mono text-[10px] uppercase tracking-wider" style={{ color: '#8f8f8f' }}>
+                            Suggested steps:
+                          </p>
+                          <ul className="list-disc list-inside mt-0.5 space-y-0.5" style={{ color: '#525252' }}>
+                            {item.nextSteps.map((step, idx) => (
+                              <li key={idx}>{step}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Question input */}
+            <div className="space-y-2">
+              <textarea
+                rows={2}
+                value={mentorMsg}
+                onChange={e => setMentorMsg(e.target.value)}
+                placeholder="Ask about design, architecture, or edge cases…"
+                className="w-full text-xs px-2.5 py-1.5 rounded-[6px] outline-none resize-none"
+                style={{ border: '1px solid #ebebeb', background: '#fafafa', color: '#171717' }}
+              />
+              {mentorErr && (
+                <p className="text-xs font-mono" style={{ color: '#c4231c' }}>{mentorErr}</p>
+              )}
+              <button
+                onClick={askMentor}
+                disabled={mentorBusy || !mentorMsg.trim()}
+                className="w-full py-1.5 text-xs rounded-[6px] font-mono uppercase tracking-wider"
+                style={{
+                  background: '#171717',
+                  color: '#ffffff',
+                  opacity: mentorBusy || !mentorMsg.trim() ? 0.5 : 1,
+                }}
+              >
+                {mentorBusy ? 'Consulting Mentor…' : 'Ask AI Mentor'}
+              </button>
+            </div>
           </div>
 
           {/* Project info */}

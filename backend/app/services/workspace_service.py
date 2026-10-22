@@ -1,6 +1,7 @@
 """Workspace service: business logic for workspace, milestones, checkins, and tasks.
 See docs/01 FR-WRK-1 to 8, docs/04 Section 7, and docs/05 Section 4.
 """
+
 import uuid
 
 from fastapi import HTTPException
@@ -36,7 +37,9 @@ class WorkspaceService:
             return
         if current_user.role == "company":
             membership = self.db.execute(
-                text("SELECT member_role FROM company_members WHERE company_id = :comp_id AND user_id = :user_id"),
+                text(
+                    "SELECT member_role FROM company_members WHERE company_id = :comp_id AND user_id = :user_id"
+                ),
                 {"comp_id": app_data["company_id"], "user_id": current_user.id},
             ).fetchone()
             if not membership:
@@ -159,7 +162,9 @@ class WorkspaceService:
 
         if current_user.role == "company":
             membership = self.db.execute(
-                text("SELECT member_role FROM company_members WHERE company_id = :comp_id AND user_id = :user_id"),
+                text(
+                    "SELECT member_role FROM company_members WHERE company_id = :comp_id AND user_id = :user_id"
+                ),
                 {"comp_id": checkin_row.company_id, "user_id": current_user.id},
             ).fetchone()
             if not membership:

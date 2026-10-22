@@ -1,18 +1,19 @@
 """Identifier generation: verification ID, QR token, and content hash.
 See docs/02-database-schema.md section 8.
 """
+
 import hashlib
 import json
 import secrets
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no look-alikes (O, 0, I, 1)
 
 
 def generate_verification_id(year: int | None = None) -> str:
     """Generate human-readable verification ID: EXP-YYYY-XXXX-NNNN.
-    
+
     Format matches schema regex: ^EXP-[0-9]{4}-[A-Z0-9]{4}-[0-9]{4}$
     """
     if year is None:
@@ -35,12 +36,15 @@ def compute_certificate_hash(
     skills: list[str],
     overall_score: int,
 ) -> str:
-    """Compute SHA-256 hash over canonical fields for certificate tampering detection."""
     if isinstance(completed_at, datetime):
-        completed_at_str = completed_at.isoformat()
+        if completed_at.tzinfo is not None:
+            completed_at_utc = completed_at.astimezone(UTC)
+        else:
+            completed_at_utc = completed_at.replace(tzinfo=UTC)
+        completed_at_str = completed_at_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
     else:
         completed_at_str = str(completed_at)
-        
+
     canonical = {
         "student_id": str(student_id),
         "project_id": str(project_id),

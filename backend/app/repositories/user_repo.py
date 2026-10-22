@@ -45,36 +45,20 @@ class UserRepository:
 
     @staticmethod
     def verify_email(db: Session, user_id: uuid.UUID) -> None:
-        stmt = (
-            update(User)
-            .where(User.id == user_id)
-            .values(email_verified_at=datetime.now(UTC))
-        )
+        stmt = update(User).where(User.id == user_id).values(email_verified_at=datetime.now(UTC))
         db.execute(stmt)
 
     @staticmethod
     def update_last_login(db: Session, user_id: uuid.UUID) -> None:
-        stmt = (
-            update(User)
-            .where(User.id == user_id)
-            .values(last_login_at=datetime.now(UTC))
-        )
+        stmt = update(User).where(User.id == user_id).values(last_login_at=datetime.now(UTC))
         db.execute(stmt)
 
     @staticmethod
     def set_active_status(db: Session, user_id: uuid.UUID, is_active: bool) -> None:
-        stmt = (
-            update(User)
-            .where(User.id == user_id)
-            .values(is_active=is_active)
-        )
+        stmt = update(User).where(User.id == user_id).values(is_active=is_active)
         db.execute(stmt)
 
     @staticmethod
     def update_password(db: Session, user_id: uuid.UUID, password_hash: str) -> None:
-        stmt = (
-            update(User)
-            .where(User.id == user_id)
-            .values(password_hash=password_hash)
-        )
+        stmt = update(User).where(User.id == user_id).values(password_hash=password_hash)
         db.execute(stmt)
