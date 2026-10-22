@@ -1,0 +1,15 @@
+# CodeRabbit Configuration
+version: "2"
+language: "en"
+tone_instructions: "Review for architectural integrity, security, error handling, and test completeness. Note that ProjectProof AI enforces server-side XP calculation, immutable audit trails, live certificate verification via database views, and strict isolation of AI services."
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+chat:
+  auto_reply: true
