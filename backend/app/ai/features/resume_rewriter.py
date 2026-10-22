@@ -25,7 +25,7 @@ def rewrite(
     # 1. Load verified certificate details (by certificate id or verification_id)
     cert_row = db.execute(
         text("""
-            SELECT c.id, c.status, a.student_id, p.title, p.category, p.difficulty,
+            SELECT c.id, c.status, a.student_id, p.id as project_id, p.title, p.category, p.difficulty,
                    p.duration_days, e.public_summary
               FROM certificates c
               JOIN applications a ON a.id = c.application_id
@@ -42,38 +42,40 @@ def rewrite(
     if not cert_row:
         raise NotFoundError("Certificate not found.")
 
+    # Authorization order: role, then ownership, then state (AGENTS.md rule 6)
+    if cert_row[2] != user_id:
+        raise NotFoundError("Certificate not found.")
+
     if cert_row[1] != "issued":
         raise BadRequestError(
             "Resume bullets can only be generated for active, issued certificates."
         )
 
-    # 2. Fetch skills associated with the project
+    # 2. Fetch skills associated with the project using its project_id
     skill_rows = db.execute(
         text("""
             SELECT s.name
               FROM project_skills ps
               JOIN skills s ON s.id = ps.skill_id
-              JOIN certificates c ON c.application_id = :aid
-              JOIN applications a ON a.id = c.application_id
-             WHERE ps.project_id = a.project_id
+             WHERE ps.project_id = :pid
         """),
-        {"aid": cert_row[0]},
+        {"pid": cert_row[3]},
     ).fetchall()
     skills_list = [r[0] for r in skill_rows] or ["General Software Engineering"]
 
     # 3. Build prompt variables
     variables = {
-        "project_title": cert_row[3],
-        "project_category": cert_row[4] or "Development",
-        "project_difficulty": cert_row[5],
-        "duration_days": str(cert_row[6]),
+        "project_title": cert_row[4],
+        "project_category": cert_row[5] or "Development",
+        "project_difficulty": cert_row[6],
+        "duration_days": str(cert_row[7]),
         "skills": ", ".join(skills_list),
-        "public_summary": cert_row[7]
+        "public_summary": cert_row[8]
         or "Demonstrated successful completion of all project deliverables.",
     }
 
     # 4. Invoke LLM via central client
-    return ai_client.run(
+    envelope = ai_client.run(
         db=db,
         user_id=user_id,
         feature="resume_rewriter",
@@ -82,3 +84,8 @@ def rewrite(
         output_model=ResumeBulletOutput,
         input_text=cert_row[3],
     )
+    output: ResumeBulletOutput = envelope["result"]
+    return {
+        "ai": envelope["ai"],
+        "result": output.model_dump(),
+    }

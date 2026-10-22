@@ -82,4 +82,8 @@ def draft(
         input_text=rough_notes[:1000],
     )
 
-    return ai_envelope
+    output: FeedbackDraftOutput = ai_envelope["result"]
+    return {
+        "ai": ai_envelope["ai"],
+        "result": output.model_dump(),
+    }

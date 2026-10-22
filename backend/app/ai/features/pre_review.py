@@ -106,6 +106,12 @@ def review(
         len(checklist), 1
     )
 
+    ai_client.recompute_confidence(
+        raw_result["ai"],
+        input_text=input_text,
+        check_pass_rate=check_pass_rate,
+    )
+
     return {
         "ai": raw_result["ai"],
         "result": {
@@ -113,5 +119,4 @@ def review(
             "overall_note": output.overall_note,
             "summary": f"AI draft: {met_count} of {len(checklist)} checklist items met.",
         },
-        "_check_pass_rate": check_pass_rate,
     }

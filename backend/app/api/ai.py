@@ -56,7 +56,7 @@ class ResumeAnalyzeRequest(BaseModel):
 
 
 class ResumeAcceptRequest(BaseModel):
-    log_id: str
+    log_id: int
     accepted_skills: list[dict[str, Any]] = Field(default_factory=list)
 
 
@@ -75,7 +75,7 @@ class GitHubAnalyzeRequest(BaseModel):
 
 
 class GitHubAcceptRequest(BaseModel):
-    log_id: str
+    log_id: int
     accepted_skills: list[dict[str, Any]] = Field(default_factory=list)
 
 
@@ -168,11 +168,21 @@ def get_project_match(
 
     project = db.execute(
         select(Project).where(
-            Project.id == project_id, Project.status.in_(["open", "draft", "closed"])
+            Project.id == project_id, Project.status.in_(["open", "closed"])
         )
     ).scalar_one_or_none()
-    if not project or project.status == "removed":
+    if not project:
         raise NotFoundError("Project not found.")
+
+    if project.status == "closed":
+        has_applied = db.execute(
+            select(Application.id).where(
+                Application.project_id == project.id,
+                Application.student_id == current_user.id,
+            )
+        ).scalar_one_or_none()
+        if not has_applied:
+            raise NotFoundError("Project not found.")
 
     # Deterministic match calculation
     match_result = MatchScoreService.calculate_match_score(
@@ -253,14 +263,10 @@ def get_project_match(
 )
 def rank_project_applicants(
     project_id: uuid.UUID,
-    current_user: User = Depends(require_roles("company")),
+    auth: tuple = Depends(require_approved_company),
     db: Session = Depends(get_db),
 ):
-    require_verified_email(current_user)
-
-    company = CompanyRepository.get_by_user_id(db, current_user.id)
-    if not company:
-        raise ForbiddenError("Company profile not found.")
+    current_user, company = auth
 
     project = db.execute(
         select(Project).where(Project.id == project_id, Project.company_id == company.id)
@@ -345,14 +351,10 @@ def rank_project_applicants(
 )
 def prereview_submission(
     submission_id: uuid.UUID,
-    current_user: User = Depends(require_roles("company")),
+    auth: tuple = Depends(require_approved_company),
     db: Session = Depends(get_db),
 ):
-    require_verified_email(current_user)
-
-    company = CompanyRepository.get_by_user_id(db, current_user.id)
-    if not company:
-        raise ForbiddenError("Company profile not found.")
+    current_user, company = auth
 
     sub = db.execute(select(Submission).where(Submission.id == submission_id)).scalar_one_or_none()
     if not sub:
@@ -532,7 +534,7 @@ def parse_recruiter_query(
 
 @router.post("/log/{log_id}/feedback", summary="Record user feedback on AI draft")
 def record_ai_feedback(
-    log_id: str,
+    log_id: int,
     req: AIFeedbackRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -540,7 +542,7 @@ def record_ai_feedback(
     row = db.execute(
         text("""
             SELECT id FROM ai_logs
-             WHERE id = CAST(:lid AS bigint) AND user_id = :uid
+             WHERE id = :lid AND user_id = :uid
         """),
         {"lid": log_id, "uid": current_user.id},
     ).fetchone()
@@ -548,7 +550,7 @@ def record_ai_feedback(
         raise NotFoundError("AI log not found.")
 
     db.execute(
-        text("UPDATE ai_logs SET accepted = :accepted WHERE id = CAST(:lid AS bigint)"),
+        text("UPDATE ai_logs SET accepted = :accepted WHERE id = :lid"),
         {"lid": log_id, "accepted": req.accepted},
     )
     db.commit()

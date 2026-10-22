@@ -37,9 +37,16 @@ def get_public_portfolio(db: Session, student_user_id: uuid.UUID) -> list[dict[s
     """Return a public student's portfolio for recruiter view.
     BR-8: if profile is not public, raise 404 (ownership check already done by caller).
     """
-    # Check is_public
+    # Check is_public, active account, and verified email
     profile = db.execute(
-        text("SELECT is_public FROM student_profiles WHERE user_id = :uid"),
+        text("""
+            SELECT sp.is_public
+              FROM student_profiles sp
+              JOIN users u ON u.id = sp.user_id
+             WHERE sp.user_id = :uid
+               AND u.is_active = TRUE
+               AND u.email_verified_at IS NOT NULL
+        """),
         {"uid": student_user_id},
     ).fetchone()
 

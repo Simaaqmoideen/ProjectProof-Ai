@@ -4,6 +4,8 @@ Handles: profile, skills, visibility, resume, dashboard, portfolio, GitHub (FR-S
 Layers: HTTP only; all business logic delegated to services.
 """
 
+import uuid
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -151,9 +153,9 @@ def replace_my_skills(
             raise BadRequestError(f"Skill '{entry.skill}' not found in skill list.")
         skill_ids.append((row[0], entry.proficiency))
 
-    # Delete existing and insert new (replace)
+    # Delete existing self skills and insert new (replace)
     db.execute(
-        text("DELETE FROM student_skills WHERE student_id = :uid"),
+        text("DELETE FROM student_skills WHERE student_id = :uid AND source = 'self'"),
         {"uid": user.id},
     )
     for skill_id, proficiency in skill_ids:
@@ -301,18 +303,27 @@ def unlink_github(
     db.commit()
 
 
-# ─── Certificates (own) — already in certificates router ─────────────────────
+# ─── Public Portfolio ─────────────────────────────────────────────────────────
 
 
-@router.get("/me/certificates")
-def get_my_certificates(
-    user: User = Depends(require_roles("student")),
+@router.get("/{student_id}/portfolio", response_model=PortfolioResponse)
+def get_public_portfolio(
+    student_id: uuid.UUID,
     db: Session = Depends(get_db),
 ):
-    """Alias — certificates router also exposes /students/me/certificates."""
-    require_verified_email(user)
-    # Delegate to portfolio which uses the same view
-    items = portfolio_service.get_portfolio(db, user.id)
-    # Filter to issued only
-    issued = [i for i in items if i["status"] == "issued"]
-    return {"items": issued, "total": len(issued)}
+    """FR-STU-10, BR-8: Public portfolio for a student. Returns 404 if private."""
+    items = portfolio_service.get_public_portfolio(db, student_id)
+    name_row = db.execute(
+        text("SELECT full_name, show_full_name_on_verification FROM student_profiles WHERE user_id = :uid"),
+        {"uid": student_id},
+    ).fetchone()
+    student_name = None
+    if name_row:
+        full_name, show_full = name_row[0], name_row[1]
+        student_name = full_name if show_full is not False else f"{full_name[0]}."
+    return PortfolioResponse(
+        items=[PortfolioItem(**i) for i in items],
+        total=len(items),
+        student_name=student_name,
+    )
+

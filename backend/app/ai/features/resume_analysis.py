@@ -6,6 +6,7 @@ All checks enforce docs/06-ai-modules-specification.md section 6.1.
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from sqlalchemy import text
@@ -64,17 +65,29 @@ def analyse(
     resume_lower = resume_text.lower()
 
     for skill in output.skills:
-        # Check evidence approximately in resume text
-        evidence_words = skill.evidence.lower().split()[:4]
-        evidence_found = any(w in resume_lower for w in evidence_words if len(w) > 3)
+        # Check evidence in resume text: require most meaningful tokens (>3 chars) to appear
+        evidence_words = [w for w in re.findall(r"\w+", skill.evidence.lower()) if len(w) > 3]
+        if not evidence_words:
+            evidence_found = skill.evidence.lower() in resume_lower if skill.evidence else False
+        else:
+            matches = sum(1 for w in evidence_words if w in resume_lower)
+            evidence_found = matches >= max(1, int(len(evidence_words) * 0.5))
+
         if not evidence_found:
-            continue  # drop: evidence not in resume text
+            continue  # drop: evidence does not sufficiently match resume text
+
         if skill.name.lower() in known_skill_names:
             valid_skills.append(skill)
         else:
             unknown_skills.append(skill.name)
 
     check_pass_rate = len(valid_skills) / max(len(output.skills), 1)
+
+    ai_client.recompute_confidence(
+        raw_result["ai"],
+        input_text=resume_text,
+        check_pass_rate=check_pass_rate,
+    )
 
     return {
         "ai": raw_result["ai"],
@@ -87,7 +100,6 @@ def analyse(
             "unknown_skills_for_review": unknown_skills,
         },
         "truncated": truncated,
-        "_check_pass_rate": check_pass_rate,
     }
 
 

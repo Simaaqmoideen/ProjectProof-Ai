@@ -53,22 +53,24 @@ def generate(
 
     output: BriefOutput = raw_result["result"]
 
-    # --- Check 1: milestones are sorted and last offset <= duration_days
-    offsets = [m.due_day_offset for m in output.milestones]
-    if offsets != sorted(offsets):
-        # sort in place to pass the check
-        output.milestones.sort(key=lambda m: m.due_day_offset)
-    if offsets and offsets[-1] > output.duration_days:
-        output.milestones[-1].due_day_offset = output.duration_days
+    # --- Check 1: Honor duration_days, sort milestones, and clamp every offset 1..duration_days
+    if duration_days:
+        output.duration_days = duration_days
+    output.milestones.sort(key=lambda m: m.due_day_offset)
+    for m in output.milestones:
+        m.due_day_offset = max(1, min(m.due_day_offset, output.duration_days))
 
-    # --- Check 2: required_skills must be in skills table
-    known = {row[0].lower() for row in db.execute(text("SELECT name FROM skills")).fetchall()}
-    # Return canonical case from DB
-    name_map = {
-        row[0].lower(): row[0] for row in db.execute(text("SELECT name FROM skills")).fetchall()
-    }
-    valid_skills = [name_map[s.lower()] for s in output.required_skills if s.lower() in known]
+    # --- Check 2: required_skills must be in skills table (single query)
+    skill_rows = db.execute(text("SELECT name FROM skills")).fetchall()
+    name_map = {row[0].lower(): row[0] for row in skill_rows}
+    valid_skills = [name_map[s.lower()] for s in output.required_skills if s.lower() in name_map]
     check_pass_rate = len(valid_skills) / max(len(output.required_skills), 1)
+
+    ai_client.recompute_confidence(
+        raw_result["ai"],
+        input_text=rough_idea,
+        check_pass_rate=check_pass_rate,
+    )
 
     return {
         "ai": raw_result["ai"],
@@ -83,5 +85,4 @@ def generate(
             "deliverables_checklist": output.deliverables_checklist,
             "ai_generated": True,
         },
-        "_check_pass_rate": check_pass_rate,
     }

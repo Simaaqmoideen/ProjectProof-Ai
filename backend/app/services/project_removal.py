@@ -41,10 +41,12 @@ def remove_project(
     if not reason or not reason.strip():
         raise BadRequestError("A reason is required to remove a project.")
     reason = reason.strip()
+    if reason not in VALID_REASONS:
+        raise BadRequestError(f"Reason must be one of: {', '.join(sorted(VALID_REASONS))}")
 
-    # Load project
+    # Load project with row lock
     project_row = db.execute(
-        text("SELECT id, status, company_id, title FROM projects WHERE id = :pid"),
+        text("SELECT id, status, company_id, title FROM projects WHERE id = :pid FOR UPDATE"),
         {"pid": project_id},
     ).fetchone()
     if not project_row:

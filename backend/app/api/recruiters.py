@@ -9,7 +9,7 @@ T-REC-01, T-REC-02, T-REC-04.
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -29,18 +29,21 @@ from app.services.recruiter_service import RecruiterService
 router = APIRouter(prefix="", tags=["Recruiters"])
 
 
-@router.post("/recruiters", response_model=RecruiterProfileResponse)
+@router.post("/recruiters", response_model=RecruiterProfileResponse, status_code=status.HTTP_201_CREATED)
 def register_recruiter_profile(
     data: RecruiterProfileRequest,
+    request: Request,
     current_user: User = Depends(require_roles("recruiter")),
     db: Session = Depends(get_db),
 ):
     require_verified_email(current_user)
+    ip = request.client.host if request.client else None
     profile = RecruiterService.register_recruiter(
         db=db,
         user=current_user,
         full_name=data.full_name,
         organization=data.organization,
+        ip=ip,
     )
     db.commit()
     db.refresh(profile)

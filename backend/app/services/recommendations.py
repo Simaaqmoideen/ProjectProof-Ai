@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.application import Application
 from app.models.project import Project
 from app.services.match_service import MatchScoreService
 
@@ -31,10 +32,35 @@ def get_recommended_projects(
 
     Returns paginated result: {"items": [...], "page": ..., "page_size": ..., "total": ...}
     """
+    # Check 3-active applications limit once before loop
+    active_apps_count = (
+        db.execute(
+            select(Application.id).where(
+                Application.student_id == student_id,
+                Application.status.in_(["applied", "in_progress", "submitted", "changes_requested"]),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(active_apps_count) >= 3:
+        return {"items": [], "page": page, "page_size": page_size, "total": 0}
+
+    # Preload applied project IDs once
+    applied_project_ids = set(
+        db.execute(
+            select(Application.project_id).where(Application.student_id == student_id)
+        )
+        .scalars()
+        .all()
+    )
+
     all_open = db.execute(select(Project).where(Project.status == "open")).scalars().all()
 
     recommendations: list[dict[str, Any]] = []
     for project in all_open:
+        if project.id in applied_project_ids:
+            continue
         rec = MatchScoreService.calculate_recommendation(db, student_id, project)
         if rec is None:
             # Student already applied, or >= 3 active; skip

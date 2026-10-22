@@ -36,7 +36,17 @@ def compute_certificate_hash(
     skills: list[str],
     overall_score: int,
 ) -> str:
-    if isinstance(completed_at, datetime):
+    if isinstance(completed_at, str):
+        try:
+            dt = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+            if dt.tzinfo is not None:
+                completed_at_utc = dt.astimezone(UTC)
+            else:
+                completed_at_utc = dt.replace(tzinfo=UTC)
+            completed_at_str = completed_at_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        except Exception:
+            completed_at_str = str(completed_at)
+    elif isinstance(completed_at, datetime):
         if completed_at.tzinfo is not None:
             completed_at_utc = completed_at.astimezone(UTC)
         else:

@@ -83,7 +83,7 @@ export PLAYWRIGHT_BASE_URL=http://localhost:5173
 ### Minute 2 — Student Applies and Works on a Project
 
 1. Log in as `priya@example.com` (Student 3).
-2. Browse open projects → select **ML Pipeline for Churn Prediction**.
+2. Browse open projects → select **API Gateway Microservices**.
 3. Show AI match score (labelled "AI draft") for the application.
 4. Switch to the Workspace — show milestone check-ins and AI mentor suggestion (FR-WRK-5).
 5. Submit final work with a GitHub link.
@@ -96,7 +96,7 @@ export PLAYWRIGHT_BASE_URL=http://localhost:5173
 
 1. Log in as `contact@novalabs.com`.
 2. Navigate to **Review Queue**.
-3. Open the submission for **ML Pipeline for Churn Prediction**.
+3. Open the submission for **API Gateway Microservices**.
 4. Show AI feedback draft (labelled "AI draft") — FR-EVL-5.
 5. Edit, accept the draft, mark decision **Approved**.
 6. Show that a certificate is created automatically via `services/certificate.py`.
@@ -161,10 +161,10 @@ npx playwright test --project=chromium-desktop
 | FR-CRT-1: Certificate created in one place | T-CRT-* | `test_certificates.py` | PASS |
 | FR-ADM-1: Admin approves company | T-ADM-01, T-NFR-08 | `test_admin.py`, `test_hardening_nfr.py` | PASS |
 | FR-ADM-5: Audit log on every admin action | T-NFR-08 | `test_hardening_nfr.py` | PASS |
-| FR-ADM-7: Anomaly scanner (A1-A5) | T-ADM-07 | `test_ai.py` | PASS |
-| FR-WRK-5: AI mentor | T-WRK-05 | `test_ai.py` | PASS |
-| FR-EVL-5: AI feedback drafter | T-EVL-05 | `test_ai.py` | PASS |
-| FR-RWD-4: Resume bullet rewriter | T-RWD-04 | `test_ai.py` | PASS |
+| FR-ADM-7: Anomaly scanner (A1-A5) | T-ADM-07 | `test_phase7_stretch.py` | PASS |
+| FR-WRK-5: AI mentor | T-WRK-05 | `test_phase7_stretch.py` | PASS |
+| FR-EVL-5: AI feedback drafter | T-EVL-05 | `test_phase7_stretch.py` | PASS |
+| FR-RWD-4: Resume bullet rewriter | T-RWD-04 | `test_phase7_stretch.py` | PASS |
 | NFR: Status icon + text, never color alone | T-NFR-05, T-E2E-03e | `test_hardening_nfr.py`, `projectproof.spec.ts` | PASS |
 | NFR: DB constraints + append-only audit | T-NFR-06 | `test_hardening_nfr.py` | PASS |
 | NFR: No secrets in code | T-NFR-07 | `test_hardening_nfr.py` | PASS |

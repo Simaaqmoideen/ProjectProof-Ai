@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 
 def get_platform_stats(db: Session) -> dict[str, Any]:
     """Read the v_platform_stats view (one row) and return as a dict."""
-    row = db.execute(text("SELECT * FROM v_platform_stats")).fetchone()
-    if not row:
+    result = db.execute(text("SELECT * FROM v_platform_stats")).mappings().first()
+    if not result:
         return {}
     keys = [
         "active_students",
@@ -28,4 +28,4 @@ def get_platform_stats(db: Session) -> dict[str, Any]:
         "open_appeals",
         "lookups_30d",
     ]
-    return {k: int(v) for k, v in zip(keys, row)}
+    return {k: int(result.get(k) or 0) for k in keys}

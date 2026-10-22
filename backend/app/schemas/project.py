@@ -115,5 +115,9 @@ class RecommendedProjectItem(BaseModel):
 
 
 class ReportProjectRequest(BaseModel):
-    reason: str = Field(..., min_length=3, max_length=100)
-    note: str | None = Field(None, max_length=1000)
+    reason: str = Field(..., min_length=1, max_length=200)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+ProjectReportRequest = ReportProjectRequest
+

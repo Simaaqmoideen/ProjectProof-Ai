@@ -7,6 +7,7 @@ AGENTS.md rule 12: GitHub data is never proof; saved skills get source='self'.
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from sqlalchemy import text
@@ -55,9 +56,10 @@ def analyse(
                 "forks": int(repo.get("forks", 0)),
             }
         )
-        repo_names.add(name.lower())
-        if lang:
-            repo_languages.add(lang.lower())
+        if name.strip():
+            repo_names.add(name.strip().lower())
+        if lang.strip():
+            repo_languages.add(lang.strip().lower())
 
     input_json = json.dumps(repos_safe)
     variables = {"GITHUB_DATA": input_json}
@@ -84,10 +86,9 @@ def analyse(
         if sg.skill.lower() not in known_skills:
             continue  # not in skills table
         evidence_lower = sg.evidence.lower()
-        # Evidence must reference a repo name or language from the input
-        if any(rn in evidence_lower for rn in repo_names) or any(
-            rl in evidence_lower for rl in repo_languages
-        ):
+        evidence_tokens = set(re.findall(r"[\w\-\.]+", evidence_lower))
+        # Evidence must reference a repo name or language as a whole token
+        if (evidence_tokens & repo_names) or (evidence_tokens & repo_languages):
             valid_skills.append(
                 {
                     "skill": known_skills[sg.skill.lower()],
@@ -97,6 +98,12 @@ def analyse(
 
     check_pass_rate = len(valid_skills) / max(len(output.skills), 1) if output.skills else 1.0
 
+    ai_client.recompute_confidence(
+        raw_result["ai"],
+        input_text=input_json,
+        check_pass_rate=check_pass_rate,
+    )
+
     return {
         "ai": raw_result["ai"],
         "result": {
@@ -104,7 +111,6 @@ def analyse(
             "skills": valid_skills,
             "label": "self-linked, not verified",
         },
-        "_check_pass_rate": check_pass_rate,
     }
 
 

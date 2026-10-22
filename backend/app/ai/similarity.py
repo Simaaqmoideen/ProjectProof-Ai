@@ -1,4 +1,4 @@
-"""Code similarity detection — FR-EVL-2 (deterministic; no LLM).
+"""Code similarity detection - FR-EVL-2 (deterministic; no LLM).
 
 Uses the winnowing algorithm (k-grams + rolling minimum hash).
 See docs/06-ai-modules-specification.md section 5.2.
@@ -57,11 +57,18 @@ class SimilarityResult(NamedTuple):
     matched_pairs: list[FileSimilarity]
 
 
-# ── Normalisation ─────────────────────────────────────────────────────────────
+# -- Normalisation ------------------------------------------------------------
+
+_KEYWORDS = {
+    "def", "class", "return", "if", "else", "elif", "for", "while", "import", "from",
+    "as", "try", "except", "finally", "with", "lambda", "const", "let", "var", "function",
+    "async", "await", "throw", "catch", "new", "this", "typeof", "instanceof", "in", "of",
+    "yield", "STR", "NUM",
+}
 
 
 def _normalise(source: str) -> str:
-    """Strip comments, collapse whitespace, replace identifiers and literals.
+    """Strip comments, literals, and normalise identifiers.
 
     This makes renaming variables or reformatting invisible to the algorithm.
     """
@@ -70,12 +77,18 @@ def _normalise(source: str) -> str:
     # Remove multi-line comments (/* ... */)
     source = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
     # Replace string literals
-    source = re.sub(r'"[^"]*"', '"STR"', source)
-    source = re.sub(r"'[^']*'", "'STR'", source)
+    source = re.sub(r'"[^"]*"', ' STR ', source)
+    source = re.sub(r"'[^']*'", ' STR ', source)
     # Replace numeric literals
-    source = re.sub(r"\b\d+\.?\d*\b", "NUM", source)
-    # Replace identifiers (words) with a placeholder — keeps keywords distinct
-    source = re.sub(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b", "ID", source)
+    source = re.sub(r"\b\d+\.?\d*\b", ' NUM ', source)
+    # Tokenize punctuation separately to preserve syntactic structure
+    source = re.sub(r"([{}()\[\],;:+\-*/%=<>!&|^~])", r" \1 ", source)
+    # Replace non-keyword identifiers with ID placeholder
+    def _replace_id(match: re.Match) -> str:
+        word = match.group(0)
+        return word if word in _KEYWORDS or word.lower() in _KEYWORDS else "ID"
+
+    source = re.sub(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b", _replace_id, source)
     # Collapse whitespace
     source = re.sub(r"\s+", " ", source).strip()
     return source
@@ -126,12 +139,12 @@ def should_skip(path: str) -> bool:
     for part in parts:
         if part in _SKIP_DIRS:
             return True
-    _, _, ext = path.rpartition(".")
-    return f".{ext.lower()}" in _SKIP_EXTENSIONS
+    path_lower = path.lower()
+    return any(path_lower.endswith(ext.lower()) for ext in _SKIP_EXTENSIONS)
 
 
 def fingerprint_files(files: dict[str, str]) -> dict[str, set[int]]:
-    """fingerprint_files({'path': 'source'}) -> {'path': fingerprint_set}."""
+    # fingerprint_files(path->source dict) -> path->fingerprint_set dict.
     result = {}
     for path, source in files.items():
         if should_skip(path):
@@ -146,25 +159,19 @@ def compare_submissions(
     files_b: dict[str, str],
     starter_template: dict[str, str] | None = None,
 ) -> SimilarityResult:
-    """Compare two submissions and return a SimilarityResult.
-
-    files_a / files_b: {relative_path: source_code}
-    starter_template: optional starter code to exclude from comparison.
-
-    Score = max containment across matching file pairs.
-    """
-    # Remove starter-template files
-    if starter_template:
-        template_fps = fingerprint_files(starter_template)
-        for path in list(files_a.keys()):
-            if path in template_fps:
-                del files_a[path]
-        for path in list(files_b.keys()):
-            if path in template_fps:
-                del files_b[path]
-
+    # Compare two submissions and return a SimilarityResult.
+    # files_a and files_b map relative_path -> source_code.
+    # starter_template: optional starter code to exclude from comparison.
+    # Score = max containment across matching file pairs.
     fp_a = fingerprint_files(files_a)
     fp_b = fingerprint_files(files_b)
+
+    # Exclude starter-template fingerprints without mutating caller dicts
+    if starter_template:
+        template_fps_map = fingerprint_files(starter_template)
+        template_fps: set[int] = set().union(*template_fps_map.values()) if template_fps_map else set()
+        fp_a = {p: fps - template_fps for p, fps in fp_a.items() if (fps - template_fps)}
+        fp_b = {p: fps - template_fps for p, fps in fp_b.items() if (fps - template_fps)}
 
     if not fp_a or not fp_b:
         return SimilarityResult(score=0.0, label="low", matched_pairs=[])

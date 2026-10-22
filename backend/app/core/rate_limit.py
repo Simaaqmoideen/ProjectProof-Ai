@@ -14,6 +14,9 @@ _request_timestamps: dict[str, list[float]] = defaultdict(list)
 _lock = Lock()
 
 
+TRUSTED_PROXIES = {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
 def parse_rate_limit(rate_str: str) -> tuple[int, float]:
     """Parse string like '30/minute' or '5/minute' into (max_requests, window_seconds)."""
     parts = rate_str.split("/")
@@ -41,7 +44,7 @@ def check_rate_limit(
     now = time.time()
     cutoff = now - window_seconds
     with _lock:
-        timestamps = _request_timestamps[key]
+        timestamps = _request_timestamps.get(key, [])
         # Keep only timestamps in current window
         valid = [ts for ts in timestamps if ts > cutoff]
         if len(valid) >= max_requests:
@@ -50,13 +53,20 @@ def check_rate_limit(
         valid.append(now)
         _request_timestamps[key] = valid
 
+        # Periodic cleanup of empty or fully expired keys
+        if len(_request_timestamps) > 100:
+            stale = [k for k, v in _request_timestamps.items() if not v or v[-1] <= cutoff]
+            for k in stale:
+                _request_timestamps.pop(k, None)
+
 
 def get_client_ip(request: Request) -> str:
-    """Extract client IP from X-Forwarded-For or direct client."""
+    """Extract client IP from X-Forwarded-For if behind trusted proxy, else direct client."""
+    client_host = request.client.host if request.client else "127.0.0.1"
     forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
+    if forwarded and client_host in TRUSTED_PROXIES:
         return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "127.0.0.1"
+    return client_host
 
 
 def reset_rate_limits() -> None:

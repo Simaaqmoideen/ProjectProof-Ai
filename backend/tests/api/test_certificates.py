@@ -19,6 +19,7 @@ from app.core.rate_limit import reset_rate_limits
 from app.db import SessionLocal
 from app.services.badges import recalculate_student_badges
 from app.services.certificate import (
+    issue_certificate_for_application,
     revoke_certificate,
     verify_certificate_content_hash,
 )
@@ -700,5 +701,67 @@ def test_t_rwd_04_05_badge_thresholds_and_revocation():
             text("SELECT count(*) FROM student_badges WHERE student_id = :uid"), {"uid": uid}
         ).scalar()
         assert student_badge_count == 0
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# T-CRT-03: Single transaction for certificate creation (rollback on failure)
+# ---------------------------------------------------------------------------
+def test_t_crt_03_atomic_transaction_rollback(monkeypatch):
+    """AGENTS.md Rule 3: Single transaction for certificate creation. If a subsequent step fails, rolls back."""
+    from app.services import certificate as cert_service
+
+    def _exploding_badges(db, student_id):
+        raise RuntimeError("Simulated badge computation failure")
+
+    monkeypatch.setattr(cert_service, "recalculate_student_badges", _exploding_badges)
+
+    db = SessionLocal()
+    try:
+        # Create a test project and application
+        comp_id = db.execute(
+            text("SELECT id FROM companies WHERE status = 'approved' LIMIT 1")
+        ).scalar()
+        rev_id = db.execute(
+            text("SELECT user_id FROM company_members WHERE company_id = :cid LIMIT 1"),
+            {"cid": comp_id},
+        ).scalar()
+        student_id = db.execute(
+            text("SELECT id FROM users WHERE role = 'student' LIMIT 1")
+        ).scalar()
+
+        proj_id = uuid.uuid4()
+        db.execute(
+            text("""
+                INSERT INTO projects (id, company_id, created_by, title, description, difficulty, duration_days, xp_max, category, max_selected, status)
+                VALUES (:id, :cid, :rev_id, 'Rollback Test Project', 'Test', 'beginner', 7, 50, 'development', 1, 'open')
+            """),
+            {"id": proj_id, "cid": comp_id, "rev_id": rev_id},
+        )
+        app_id = uuid.uuid4()
+        db.execute(
+            text("INSERT INTO applications (id, project_id, student_id, status) VALUES (:id, :pid, :sid, 'in_progress')"),
+            {"id": app_id, "pid": proj_id, "sid": student_id},
+        )
+        db.commit()
+
+        # Issuing certificate should fail inside transaction when badges explode
+        with pytest.raises(RuntimeError, match="Simulated badge computation failure"):
+            cert_service.issue_certificate_for_application(
+                db=db,
+                application_id=app_id,
+                reviewer_id=rev_id,
+                overall_score=85,
+                feedback="Good job",
+            )
+        db.rollback()
+
+        # Verify no certificate exists for this application
+        cert = db.execute(
+            text("SELECT id FROM certificates WHERE application_id = :aid"),
+            {"aid": app_id},
+        ).fetchone()
+        assert cert is None, "Certificate must not exist after transaction failure"
     finally:
         db.close()

@@ -65,11 +65,16 @@ def suggest(
 
     check_pass_rate = len(valid_items) / max(len(output.items), 1) if output.items else 1.0
 
+    ai_client.recompute_confidence(
+        raw_result["ai"],
+        input_text=json.dumps(missing_skills),
+        check_pass_rate=check_pass_rate,
+    )
+
     return {
         "ai": raw_result["ai"],
         "result": {
             "order_reason": output.order_reason,
             "items": valid_items,
         },
-        "_check_pass_rate": check_pass_rate,
     }

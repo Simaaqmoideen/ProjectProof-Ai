@@ -78,11 +78,19 @@ def test_resume_analyze_and_accept_t_ai_07(client: TestClient):
     """Resume analysis returns AI draft without touching student_skills until accept."""
     headers = _student_headers(client)
 
-    resume_text = (
-        "Ananya Sharma\n"
-        "Software Engineer with 2 years of experience in Python and Flask.\n"
-        "Built a RESTful API service for real-time order processing at university project."
-    )
+    # T-AI-07: Capture count BEFORE /resume/analyze
+    db = SessionLocal()
+    try:
+        count_before = (
+            db.execute(
+                text(
+                    "SELECT count(*) FROM student_skills ss JOIN users u ON u.id = ss.student_id WHERE u.email = 'ananya@example.com' AND ss.source = 'resume'"
+                )
+            ).scalar()
+            or 0
+        )
+    finally:
+        db.close()
 
     # 1. Analyze
     res = client.post(
@@ -98,12 +106,15 @@ def test_resume_analyze_and_accept_t_ai_07(client: TestClient):
     # T-AI-07: Verify nothing was saved to student_skills yet
     db = SessionLocal()
     try:
-        row = db.execute(
-            text(
-                "SELECT count(*) FROM student_skills ss JOIN users u ON u.id = ss.student_id WHERE u.email = 'ananya@example.com' AND ss.source = 'resume'"
-            )
-        ).scalar()
-        assert (row or 0) >= 0
+        count_after_analyze = (
+            db.execute(
+                text(
+                    "SELECT count(*) FROM student_skills ss JOIN users u ON u.id = ss.student_id WHERE u.email = 'ananya@example.com' AND ss.source = 'resume'"
+                )
+            ).scalar()
+            or 0
+        )
+        assert count_after_analyze == count_before, "AI draft must not write to business tables before acceptance"
     finally:
         db.close()
 
@@ -111,7 +122,7 @@ def test_resume_analyze_and_accept_t_ai_07(client: TestClient):
     accepted_skills = [{"name": "Python", "proficiency": 3}]
     accept_res = client.post(
         "/api/v1/ai/resume/accept",
-        json={"log_id": str(log_id), "accepted_skills": accepted_skills},
+        json={"log_id": int(log_id), "accepted_skills": accepted_skills},
         headers=headers,
     )
     assert accept_res.status_code == 200, accept_res.text
@@ -322,7 +333,7 @@ def test_github_analysis_and_accept(client: TestClient, monkeypatch):
     # Accept proposed skill
     accept_res = client.post(
         "/api/v1/ai/github/accept",
-        json={"log_id": str(log_id), "accepted_skills": [{"skill": "FastAPI"}]},
+        json={"log_id": int(log_id), "accepted_skills": [{"skill": "FastAPI"}]},
         headers=headers,
     )
     assert accept_res.status_code == 200, accept_res.text

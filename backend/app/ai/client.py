@@ -165,13 +165,11 @@ class _OpenAILLMClient:
 
         try:
             resp = self._client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=settings.llm_model,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=max_tokens,
                 response_format={"type": "json_object"},
-                timeout=settings.ai_timeout_seconds
-                if hasattr(settings, "ai_timeout_seconds")
-                else 30,
+                timeout=settings.ai_timeout_seconds,
             )
             return resp.choices[0].message.content or "{}"
         except openai.RateLimitError as exc:
@@ -196,22 +194,18 @@ def _get_llm_client():
 def _load_prompt(feature: str, version: str, variables: dict[str, str]) -> str:
     """Load versioned prompt file and substitute {{VAR}} placeholders.
 
-    Falls back to a minimal inline prompt if the file does not exist yet.
+    Raises LLMError if the versioned prompt does not exist.
     """
     prompt_file = _PROMPTS_DIR / feature / f"{version}.md"
-    if prompt_file.exists():
-        template = prompt_file.read_text(encoding="utf-8")
-    else:
-        # Minimal fallback — feature name + variables serialised as JSON data block.
-        template = (
-            f"You are a JSON-only assistant for the '{feature}' task.\n"
-            "Return ONLY valid JSON matching the required schema.\n"
-            "Input data:\n```\n{{DATA}}\n```"
+    if not prompt_file.exists():
+        raise LLMError(
+            "prompt_not_found",
+            f"Prompt template '{version}.md' not found for feature '{feature}'.",
+            status_code=500,
         )
-        variables = {"DATA": json.dumps(variables, ensure_ascii=False)}
-
+    template = prompt_file.read_text(encoding="utf-8")
     for key, value in variables.items():
-        template = template.replace(f"{{{{{key}}}}}", value)
+        template = template.replace(f"{{{{{key}}}}}", str(value))
     return template
 
 
@@ -234,6 +228,18 @@ def _compute_confidence(
     elif check_pass_rate < 0.8 and conf == "high":
         conf = "medium"
     return conf
+
+
+def recompute_confidence(
+    ai_meta: dict[str, Any],
+    input_text: str = "",
+    needed_retry: bool = False,
+    check_pass_rate: float = 1.0,
+) -> str:
+    """Recalculate AI metadata confidence from feature check pass rate."""
+    new_conf = _compute_confidence(input_text, needed_retry, check_pass_rate)
+    ai_meta["confidence"] = new_conf
+    return new_conf
 
 
 # ── Quota check ───────────────────────────────────────────────────────────────
@@ -285,7 +291,7 @@ def _write_log(
             "uid": user_id,
             "feature": feature,
             "pv": prompt_version,
-            "model": settings.llm_provider,
+            "model": f"{settings.llm_provider}:{settings.llm_model}",
             "input_ref": input_ref,
             "output": json.dumps(output),
             "conf": confidence,
@@ -323,13 +329,28 @@ def run(
     needed_retry = False
     start = time.monotonic()
     raw = client.call(feature, prompt)
-    first_attempt_ok = True
 
     try:
         parsed = json.loads(raw)
         result = output_model.model_validate(parsed)
-    except Exception:
-        first_attempt_ok = False
+    except Exception as exc1:
+        # Record attempt 1 failure in ai_logs so every provider call consumes quota
+        input_ref = hashlib.sha256(input_text.encode()).hexdigest()[:16] if input_text else "n/a"
+        _write_log(
+            db,
+            user_id=user_id,
+            feature=feature,
+            prompt_version=prompt_version,
+            input_ref=input_ref,
+            output={"error": "validation_failed", "detail": str(exc1)},
+            confidence="low",
+            latency_ms=int((time.monotonic() - start) * 1000),
+        )
+        db.commit()
+
+        # Check quota before repair attempt
+        _check_quota(db, user_id)
+
         # One repair retry
         repair_prompt = (
             f"{prompt}\n\n"
@@ -342,6 +363,17 @@ def run(
             result = output_model.model_validate(parsed)
             needed_retry = True
         except Exception as exc:
+            _write_log(
+                db,
+                user_id=user_id,
+                feature=feature,
+                prompt_version=prompt_version,
+                input_ref=input_ref,
+                output={"error": "repair_failed", "detail": str(exc)},
+                confidence="low",
+                latency_ms=int((time.monotonic() - start) * 1000),
+            )
+            db.commit()
             raise LLMError(
                 "ai_output_invalid", f"AI output could not be validated: {exc}", status_code=422
             ) from exc
@@ -367,5 +399,4 @@ def run(
     return {
         "ai": AIMeta(label="AI draft", confidence=confidence, log_id=log_id).model_dump(),
         "result": result,
-        "_first_attempt_ok": first_attempt_ok,
     }

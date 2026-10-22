@@ -6,8 +6,10 @@ See docs/06-ai-modules-specification.md section 6.3.
 
 from __future__ import annotations
 
+import re
 import uuid
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.ai import client as ai_client
@@ -55,31 +57,39 @@ def explain_applicants(
 
     # Build fact lookup per applicant for verification
     fact_map: dict[str, dict] = {str(a["application_id"]): a for a in applicants}
+    all_skills = {row[0].lower() for row in db.execute(text("SELECT name FROM skills")).fetchall()}
 
     verified: list[dict] = []
+    seen_ids: set[str] = set()
     passed = 0
+
     for expl in output.explanations:
-        app_facts = fact_map.get(str(expl.application_id))
+        aid = str(expl.application_id)
+        if aid in seen_ids:
+            continue
+        app_facts = fact_map.get(aid)
         if not app_facts:
             continue
 
-        strengths = _verify_sentence(expl.strengths, app_facts)
-        gaps = _verify_sentence(expl.gaps, app_facts)
-        passed += 1
+        seen_ids.add(aid)
+        strengths = _verify_sentence(expl.strengths, app_facts, is_gaps=False, all_skills=all_skills)
+        gaps = _verify_sentence(expl.gaps, app_facts, is_gaps=True, all_skills=all_skills)
+        if strengths == expl.strengths.strip() and gaps == expl.gaps.strip():
+            passed += 1
+
         verified.append(
             {
-                "application_id": expl.application_id,
+                "application_id": aid,
                 "strengths": strengths,
                 "gaps": gaps,
             }
         )
 
     # Add template sentences for applicants with no explanation
-    explained_ids = {e["application_id"] for e in verified}
     for app in applicants:
         aid = str(app["application_id"])
-        if aid not in explained_ids:
-            passed += 1
+        if aid not in seen_ids:
+            seen_ids.add(aid)
             verified.append(
                 {
                     "application_id": aid,
@@ -89,8 +99,11 @@ def explain_applicants(
             )
 
     check_pass_rate = passed / max(len(applicants), 1)
-    raw_result["ai"]["confidence"] = _recompute_confidence(
-        check_pass_rate, raw_result["ai"]["confidence"]
+    ai_client.recompute_confidence(
+        raw_result["ai"],
+        input_text=facts_json,
+        needed_retry=not raw_result.get("_first_attempt_ok", True),
+        check_pass_rate=check_pass_rate,
     )
 
     return {
@@ -99,26 +112,33 @@ def explain_applicants(
     }
 
 
-def _verify_sentence(sentence: str, facts: dict) -> str:
+def _verify_sentence(
+    sentence: str,
+    facts: dict,
+    is_gaps: bool = False,
+    all_skills: set[str] | None = None,
+) -> str:
     """Return sentence only if it references facts; otherwise return a template."""
-    if not sentence:
-        return _template_strengths(facts)
+    fallback = _template_gaps(facts) if is_gaps else _template_strengths(facts)
+    if not sentence or not sentence.strip():
+        return fallback
 
-    # Collect allowed terms from facts
-    allowed_terms: set[str] = set()
-    for skill in facts.get("matched_skills", []) + facts.get("missing_skills", []):
-        allowed_terms.add(skill.lower())
-    for val in facts.get("breakdown", {}).values():
-        allowed_terms.add(str(val))
-    allowed_terms.add(str(facts.get("verified_project_count", "")))
-    allowed_terms.add(str(facts.get("relevant_verified_projects", "")))
-    allowed_terms.add(str(facts.get("current_load", "")))
-
+    fact_skills = {s.lower() for s in (facts.get("matched_skills", []) + facts.get("missing_skills", []))}
     sentence_lower = sentence.lower()
-    # If sentence has at least one grounded term or is short enough, accept it
-    if any(t in sentence_lower for t in allowed_terms if t):
-        return sentence
-    return _template_strengths(facts)
+
+    # Reject if sentence mentions any technology/skill not in the applicant's facts
+    if all_skills:
+        for sk in all_skills:
+            if len(sk) > 2 and re.search(rf"\b{re.escape(sk)}\b", sentence_lower):
+                if sk not in fact_skills:
+                    return fallback
+
+    # Sentence must reference at least one fact skill
+    has_fact_skill = any(re.search(rf"\b{re.escape(fs)}\b", sentence_lower) for fs in fact_skills if fs)
+    if has_fact_skill:
+        return sentence.strip()
+
+    return fallback
 
 
 def _template_strengths(facts: dict) -> str:
@@ -138,11 +158,3 @@ def _template_gaps(facts: dict) -> str:
     if missing:
         return f"Missing: {', '.join(missing[:3])}."
     return "No significant skill gaps."
-
-
-def _recompute_confidence(rate: float, current: str) -> str:
-    if rate < 0.5 or current == "low":
-        return "low"
-    if rate < 0.8 or current == "medium":
-        return "medium"
-    return "high"

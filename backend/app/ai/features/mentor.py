@@ -85,7 +85,7 @@ def chat(
         "chat_history": history_str,
     }
 
-    return ai_client.run(
+    res = ai_client.run(
         db=db,
         user_id=user_id,
         feature="mentor",
@@ -94,3 +94,21 @@ def chat(
         output_model=MentorChatOutput,
         input_text=message[:500],
     )
+
+    log_id = res.get("ai", {}).get("log_id")
+    if log_id:
+        db.execute(
+            text("""
+                UPDATE ai_logs
+                   SET output = output || jsonb_build_object('application_id', :aid)
+                 WHERE id = CAST(:lid AS bigint)
+            """),
+            {"aid": str(application_id), "lid": log_id},
+        )
+        db.commit()
+
+    mentor_output: MentorChatOutput = res["result"]
+    return {
+        "ai": res["ai"],
+        "result": mentor_output.model_dump(),
+    }

@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     # AI settings
     llm_provider: str = "mock"
     llm_api_key: str = "mock"
+    llm_model: str = "gpt-4o-mini"
     llm_daily_limit_per_user: int = 20
     ai_timeout_seconds: int = 30
     ai_max_resume_chars: int = 15_000

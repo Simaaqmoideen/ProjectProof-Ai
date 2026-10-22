@@ -72,7 +72,7 @@ interface FlagItem {
   entity_id: string;
   score: number;
   details: { summary?: string; [key: string]: any } | null;
-  status: 'open' | 'resolved' | 'dismissed';
+  status: 'open' | 'confirmed' | 'dismissed';
   reviewed_by: string | null;
   reviewed_at: string | null;
   created_at: string;
@@ -150,16 +150,24 @@ export const AdminApprovalQueuePage: React.FC<AdminApprovalQueueProps> = ({ defa
     }
   };
 
+  const flagsReqSeq = React.useRef(0);
   const fetchFlags = async () => {
+    const seq = ++flagsReqSeq.current;
     setLoadingFlags(true);
     try {
       const query = flagStatusFilter ? `?status=${flagStatusFilter}` : '';
       const data = await apiRequest<{ items: FlagItem[]; total: number }>(`/admin/flags${query}`);
-      setFlags(data.items || []);
+      if (seq === flagsReqSeq.current) {
+        setFlags(data.items || []);
+      }
     } catch (err: any) {
-      setActionMessage({ text: err.message || 'Failed to load anomaly flags', type: 'error' });
+      if (seq === flagsReqSeq.current) {
+        setActionMessage({ text: err.message || 'Failed to load anomaly flags', type: 'error' });
+      }
     } finally {
-      setLoadingFlags(false);
+      if (seq === flagsReqSeq.current) {
+        setLoadingFlags(false);
+      }
     }
   };
 
@@ -183,15 +191,15 @@ export const AdminApprovalQueuePage: React.FC<AdminApprovalQueueProps> = ({ defa
     }
   };
 
-  const handleReviewFlag = async (flagId: string, decision: 'resolve' | 'dismiss') => {
+  const handleReviewFlag = async (flagId: string, reason: 'confirmed' | 'dismissed') => {
     setIsProcessing(true);
     try {
-      await apiRequest(`/admin/flags/${flagId}/review`, {
+      await apiRequest(`/admin/flags/${flagId}/resolve`, {
         method: 'POST',
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify({ reason }),
       });
       setActionMessage({
-        text: `Flag marked as ${decision === 'resolve' ? 'resolved' : 'dismissed'}.`,
+        text: `Flag marked as ${reason}.`,
         type: 'success',
       });
       fetchFlags();
@@ -724,7 +732,7 @@ export const AdminApprovalQueuePage: React.FC<AdminApprovalQueueProps> = ({ defa
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
               <div className="flex items-center gap-2 text-xs">
                 <span className="font-mono uppercase text-[#7d7d7d]">Status:</span>
-                {(['open', 'resolved', 'dismissed', ''] as const).map((st) => (
+                {(['open', 'confirmed', 'dismissed', ''] as const).map((st) => (
                   <button
                     key={st || 'all'}
                     onClick={() => setFlagStatusFilter(st)}
@@ -818,7 +826,7 @@ export const AdminApprovalQueuePage: React.FC<AdminApprovalQueueProps> = ({ defa
                                 className={`px-2 py-0.5 rounded ${
                                   flag.status === 'open'
                                     ? 'bg-[#fef3c7] text-[#92400e]'
-                                    : flag.status === 'resolved'
+                                    : flag.status === 'confirmed'
                                     ? 'bg-[#dcfce7] text-[#15803d]'
                                     : 'bg-[#f3f4f6] text-[#4b5563]'
                                 }`}
@@ -834,14 +842,14 @@ export const AdminApprovalQueuePage: React.FC<AdminApprovalQueueProps> = ({ defa
                                 <div className="flex items-center justify-end gap-1.5 font-mono text-[11px]">
                                   <button
                                     disabled={isProcessing}
-                                    onClick={() => handleReviewFlag(flag.id, 'resolve')}
+                                    onClick={() => handleReviewFlag(flag.id, 'confirmed')}
                                     className="px-2 py-1 rounded bg-[#171717] text-white hover:opacity-90 disabled:opacity-50"
                                   >
-                                    Resolve
+                                    Confirm
                                   </button>
                                   <button
                                     disabled={isProcessing}
-                                    onClick={() => handleReviewFlag(flag.id, 'dismiss')}
+                                    onClick={() => handleReviewFlag(flag.id, 'dismissed')}
                                     className="px-2 py-1 rounded border border-[#ebebeb] text-[#4d4d4d] hover:bg-white disabled:opacity-50"
                                   >
                                     Dismiss

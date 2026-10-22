@@ -76,7 +76,7 @@ class BriefMilestone(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str
     description: str
-    due_day_offset: int
+    due_day_offset: int = Field(..., ge=1, le=365)
 
 
 class BriefOutput(BaseModel):

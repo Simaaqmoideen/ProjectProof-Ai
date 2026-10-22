@@ -414,8 +414,13 @@ def get_mentor_usage_summary(
 
     total = (
         db.execute(
-            text("SELECT count(*) FROM ai_logs WHERE feature = 'mentor' AND user_id = :uid"),
-            {"uid": application.student_id},
+            text("""
+                SELECT count(*) FROM ai_logs
+                 WHERE feature = 'mentor'
+                   AND user_id = :uid
+                   AND (output->>'application_id' = :aid OR output->>'_application_id' = :aid)
+            """),
+            {"uid": application.student_id, "aid": str(application_id)},
         ).scalar()
         or 0
     )

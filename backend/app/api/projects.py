@@ -26,6 +26,7 @@ from app.schemas.project import (
     PaginatedProjectsResponse,
     ProjectCompanyInfo,
     ProjectCreateRequest,
+    ProjectReportRequest,
     ProjectResponse,
     ProjectUpdateRequest,
     TaskResponse,
@@ -377,7 +378,7 @@ def get_project(
 @router.post("/projects/{project_id}/report", status_code=status.HTTP_201_CREATED)
 def report_project(
     project_id: uuid.UUID,
-    data: dict,
+    data: ProjectReportRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("student", "recruiter", "company")),
 ):
@@ -388,8 +389,8 @@ def report_project(
 
     require_verified_email(current_user)
 
-    reason = (data.get("reason") or "").strip()
-    note = (data.get("note") or "").strip() or None
+    reason = data.reason.strip()
+    note = data.note.strip() if data.note else None
     if not reason:
         from app.core.errors import BadRequestError
 

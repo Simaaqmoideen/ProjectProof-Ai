@@ -594,20 +594,21 @@ def generate_certificate_pdf(
         raise CertificateError("Certificate not found", status_code=404)
 
     # Authorization: student (owner), company (issuer), admin
-    if requesting_role != "admin":
-        if requesting_role == "student" and row.student_id != requesting_user_id:
-            raise CertificateError("Not authorized to download this certificate", status_code=404)
-        elif requesting_role == "company":
-            membership = db.execute(
-                text(
-                    "SELECT member_role FROM company_members WHERE company_id = :cid AND user_id = :uid"
-                ),
-                {"cid": row.company_id, "uid": requesting_user_id},
-            ).fetchone()
-            if not membership:
-                raise CertificateError(
-                    "Not authorized to download this certificate", status_code=404
-                )
+    if requesting_role not in ("admin", "student", "company"):
+        raise CertificateError("Not authorized to download this certificate", status_code=404)
+    if requesting_role == "student" and row.student_id != requesting_user_id:
+        raise CertificateError("Not authorized to download this certificate", status_code=404)
+    elif requesting_role == "company":
+        membership = db.execute(
+            text(
+                "SELECT member_role FROM company_members WHERE company_id = :cid AND user_id = :uid"
+            ),
+            {"cid": row.company_id, "uid": requesting_user_id},
+        ).fetchone()
+        if not membership:
+            raise CertificateError(
+                "Not authorized to download this certificate", status_code=404
+            )
 
     # Fetch skills
     skills_rows = db.execute(
@@ -756,4 +757,22 @@ def verify_certificate_content_hash(db: Session, certificate_id: uuid.UUID) -> b
         skills=skill_names,
         overall_score=row.overall_score,
     )
-    return computed == row.content_hash
+    if computed == row.content_hash:
+        return True
+
+    # Backwards-compatible check for legacy isoformat() representation
+    if isinstance(row.completed_at, datetime):
+        legacy_completed_str = row.completed_at.isoformat()
+    else:
+        legacy_completed_str = str(row.completed_at)
+    canonical_legacy = {
+        "student_id": str(row.student_id),
+        "project_id": str(row.project_id),
+        "company_id": str(row.company_id),
+        "completed_at": legacy_completed_str,
+        "skills": sorted(skill_names),
+        "overall_score": row.overall_score,
+    }
+    raw_legacy = _json.dumps(canonical_legacy, sort_keys=True, separators=(",", ":"))
+    legacy_hash = hashlib.sha256(raw_legacy.encode("utf-8")).hexdigest()
+    return legacy_hash == row.content_hash

@@ -95,6 +95,7 @@ class PortfolioItem(BaseModel):
 class PortfolioResponse(BaseModel):
     items: list[PortfolioItem]
     total: int
+    student_name: str | None = None
 
 
 # ─── GitHub ──────────────────────────────────────────────────────────────────
