@@ -711,11 +711,21 @@ def test_t_crt_03_atomic_transaction_rollback(monkeypatch):
     """AGENTS.md Rule 3: Single transaction for certificate creation. If a subsequent step fails, rolls back."""
     from app.services import certificate as cert_service
 
+    operation_certificate_ids = []
+
     def _exploding_badges(db, student_id):
+        operation_certificate_ids.extend(
+            db.execute(
+                text("SELECT id FROM certificates WHERE application_id = :aid"),
+                {"aid": app_id},
+            ).scalars()
+        )
         raise RuntimeError("Simulated badge computation failure")
 
     monkeypatch.setattr(cert_service, "recalculate_student_badges", _exploding_badges)
 
+    proj_id = uuid.uuid4()
+    app_id = uuid.uuid4()
     db = SessionLocal()
     try:
         # Create a test project and application
@@ -727,10 +737,11 @@ def test_t_crt_03_atomic_transaction_rollback(monkeypatch):
             {"cid": comp_id},
         ).scalar()
         student_id = db.execute(
-            text("SELECT id FROM users WHERE role = 'student' LIMIT 1")
+            text(
+                "SELECT u.id FROM users u JOIN student_profiles sp ON sp.user_id = u.id WHERE u.role = 'student' LIMIT 1"
+            )
         ).scalar()
 
-        proj_id = uuid.uuid4()
         db.execute(
             text("""
                 INSERT INTO projects (id, company_id, created_by, title, description, difficulty, duration_days, xp_max, category, max_selected, status)
@@ -738,7 +749,6 @@ def test_t_crt_03_atomic_transaction_rollback(monkeypatch):
             """),
             {"id": proj_id, "cid": comp_id, "rev_id": rev_id},
         )
-        app_id = uuid.uuid4()
         db.execute(
             text("INSERT INTO applications (id, project_id, student_id, status) VALUES (:id, :pid, :sid, 'in_progress')"),
             {"id": app_id, "pid": proj_id, "sid": student_id},
@@ -762,5 +772,21 @@ def test_t_crt_03_atomic_transaction_rollback(monkeypatch):
             {"aid": app_id},
         ).fetchone()
         assert cert is None, "Certificate must not exist after transaction failure"
+        application_status = db.execute(
+            text("SELECT status FROM applications WHERE id = :aid"), {"aid": app_id}
+        ).scalar_one()
+        assert application_status == "in_progress"
+        assert operation_certificate_ids, "Failure must occur after certificate and XP insertion"
+        xp_count = db.execute(
+            text("SELECT count(*) FROM xp_events WHERE certificate_id = ANY(:cids)"),
+            {"cids": operation_certificate_ids},
+        ).scalar_one()
+        assert xp_count == 0
     finally:
-        db.close()
+        db.rollback()
+        try:
+            db.execute(text("DELETE FROM applications WHERE id = :aid"), {"aid": app_id})
+            db.execute(text("DELETE FROM projects WHERE id = :pid"), {"pid": proj_id})
+            db.commit()
+        finally:
+            db.close()

@@ -62,7 +62,7 @@ class ResumeAcceptRequest(BaseModel):
 class BriefGenerateRequest(BaseModel):
     rough_idea: str = Field(..., min_length=5, max_length=1_000)
     target_difficulty: str | None = None
-    duration_days: int | None = None
+    duration_days: int | None = Field(default=None, ge=7, le=365)
 
 
 class SkillGapRequest(BaseModel):

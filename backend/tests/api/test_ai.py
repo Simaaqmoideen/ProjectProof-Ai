@@ -499,3 +499,73 @@ def test_t_ai_09_verification_page_no_ai_field(client: TestClient):
     assert "ai_draft" not in str(data).lower()
     assert "ai_prereview" not in data
     assert "llm" not in str(data).lower()
+
+
+@pytest.mark.parametrize("duration_days", [-1, 0, 6, 366])
+def test_brief_rejects_out_of_range_duration(client, duration_days):
+    response = client.post(
+        "/api/v1/ai/projects/brief",
+        json={"rough_idea": "Build a useful API", "duration_days": duration_days},
+        headers=_nova_headers(client),
+    )
+    assert response.status_code == 400, response.text
+
+
+@pytest.mark.parametrize("duration_days", [7, 365])
+def test_brief_accepts_duration_bounds(client, duration_days):
+    response = client.post(
+        "/api/v1/ai/projects/brief",
+        json={"rough_idea": "Build a useful API", "duration_days": duration_days},
+        headers=_nova_headers(client),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["result"]["duration_days"] == duration_days
+
+
+@pytest.mark.parametrize(
+    ("code", "status"), [("provider_timeout", 503), ("provider_rate_limit", 429)]
+)
+def test_repair_preserves_provider_error(client, monkeypatch, code, status):
+    from app.ai import client as ai_client
+
+    class RepairErrorClient:
+        calls = 0
+
+        def call(self, feature, prompt, max_tokens=2000):
+            self.calls += 1
+            if self.calls == 1:
+                return "invalid JSON"
+            raise ai_client.LLMError(code, "Provider unavailable", status_code=status)
+
+    provider = RepairErrorClient()
+    monkeypatch.setattr(ai_client, "_get_llm_client", lambda: provider)
+    response = client.post(
+        "/api/v1/ai/resume/analyze",
+        json={"resume_text": "Student resume with enough content for validation."},
+        headers=_student_headers(client),
+    )
+    assert response.status_code == status, response.text
+    assert response.json()["error"]["code"] == code
+    assert provider.calls == 2
+
+
+def test_brief_preserves_repair_confidence_cap(client, monkeypatch):
+    import json
+
+    from app.ai import client as ai_client
+
+    class RepairedBriefClient:
+        calls = 0
+
+        def call(self, feature, prompt, max_tokens=2000):
+            self.calls += 1
+            return "invalid JSON" if self.calls == 1 else json.dumps(ai_client._MOCK_RESPONSES[feature])
+
+    monkeypatch.setattr(ai_client, "_get_llm_client", lambda: RepairedBriefClient())
+    response = client.post(
+        "/api/v1/ai/projects/brief",
+        json={"rough_idea": "Build a robust API with authentication and reliable data storage for a business."},
+        headers=_nova_headers(client),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["ai"]["confidence"] == "medium"

@@ -100,7 +100,7 @@ def chat(
         db.execute(
             text("""
                 UPDATE ai_logs
-                   SET output = output || jsonb_build_object('application_id', :aid)
+                   SET output = output || jsonb_build_object('application_id', CAST(:aid AS text))
                  WHERE id = CAST(:lid AS bigint)
             """),
             {"aid": str(application_id), "lid": log_id},

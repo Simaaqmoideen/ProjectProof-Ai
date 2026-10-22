@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.schemas.project import ProjectReportRequest  # noqa: F401 — public compatibility re-export
+
 # ─── Student Profile ─────────────────────────────────────────────────────────
 
 
@@ -246,11 +248,3 @@ class ProjectRemovalResponse(BaseModel):
     applied_rejected: int
     active_withdrawn: int
     company_trust_score: int
-
-
-# ─── Project report ──────────────────────────────────────────────────────────
-
-
-class ProjectReportRequest(BaseModel):
-    reason: str = Field(min_length=1, max_length=200)
-    note: str | None = Field(default=None, max_length=2000)

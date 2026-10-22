@@ -86,9 +86,11 @@ def analyse(
         if sg.skill.lower() not in known_skills:
             continue  # not in skills table
         evidence_lower = sg.evidence.lower()
-        evidence_tokens = set(re.findall(r"[\w\-\.]+", evidence_lower))
-        # Evidence must reference a repo name or language as a whole token
-        if (evidence_tokens & repo_names) or (evidence_tokens & repo_languages):
+        # Match complete repo names and languages, including punctuation and spaces.
+        if any(
+            re.search(rf"(?<!\w){re.escape(term)}(?!\w)", evidence_lower)
+            for term in repo_names | repo_languages
+        ):
             valid_skills.append(
                 {
                     "skill": known_skills[sg.skill.lower()],

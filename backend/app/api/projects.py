@@ -383,47 +383,11 @@ def report_project(
     current_user: User = Depends(require_roles("student", "recruiter", "company")),
 ):
     """FR-ADM-9, T-ADM-08: Any authenticated user can report a project; opens a manual flag."""
-    import uuid as _uuid
-
-    from sqlalchemy import text as _text
-
     require_verified_email(current_user)
-
-    reason = data.reason.strip()
-    note = data.note.strip() if data.note else None
-    if not reason:
-        from app.core.errors import BadRequestError
-
-        raise BadRequestError("reason is required.")
-
-    # Verify project exists
-    proj = db.execute(
-        _text("SELECT id FROM projects WHERE id = :pid"),
-        {"pid": project_id},
-    ).fetchone()
-    if not proj:
-        raise NotFoundError("Project not found.")
-
-    import json as _json
-
-    flag_id = _uuid.uuid4()
-    details_json = _json.dumps(
-        {
-            "reason": reason,
-            "note": note,
-            "reported_by": str(current_user.id),
-        }
+    return ProjectService.report_project(
+        db,
+        project_id=project_id,
+        reporter_id=current_user.id,
+        reason=data.reason,
+        note=data.note,
     )
-    db.execute(
-        _text("""
-            INSERT INTO flags (id, kind, entity_type, entity_id, details, status, created_at)
-            VALUES (:id, 'manual', 'project', :entity_id, CAST(:details AS jsonb), 'open', now())
-        """),
-        {
-            "id": flag_id,
-            "entity_id": project_id,
-            "details": details_json,
-        },
-    )
-    db.commit()
-    return {"message": "Report submitted. An admin will review it.", "flag_id": str(flag_id)}

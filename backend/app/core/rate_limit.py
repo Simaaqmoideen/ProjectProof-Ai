@@ -12,6 +12,8 @@ from app.core.errors import RateLimitedError
 
 _request_timestamps: dict[str, list[float]] = defaultdict(list)
 _lock = Lock()
+_key_expiries: dict[str, float] = {}
+_last_cleanup = 0.0
 
 
 TRUSTED_PROXIES = {"127.0.0.1", "::1", "localhost", "testclient"}
@@ -41,9 +43,18 @@ def check_rate_limit(
     window_seconds: float = 60.0,
 ) -> None:
     """Check if the given key exceeded rate limit. Raises RateLimitedError if exceeded."""
+    global _last_cleanup
     now = time.time()
     cutoff = now - window_seconds
     with _lock:
+        # Sweep at most once a minute, using each key's own window expiry.
+        if now - _last_cleanup >= 60.0:
+            stale = [k for k, expiry in _key_expiries.items() if expiry <= now]
+            for stale_key in stale:
+                _request_timestamps.pop(stale_key, None)
+                _key_expiries.pop(stale_key, None)
+            _last_cleanup = now
+
         timestamps = _request_timestamps.get(key, [])
         # Keep only timestamps in current window
         valid = [ts for ts in timestamps if ts > cutoff]
@@ -53,11 +64,7 @@ def check_rate_limit(
         valid.append(now)
         _request_timestamps[key] = valid
 
-        # Periodic cleanup of empty or fully expired keys
-        if len(_request_timestamps) > 100:
-            stale = [k for k, v in _request_timestamps.items() if not v or v[-1] <= cutoff]
-            for k in stale:
-                _request_timestamps.pop(k, None)
+        _key_expiries[key] = now + window_seconds
 
 
 def get_client_ip(request: Request) -> str:
@@ -71,5 +78,8 @@ def get_client_ip(request: Request) -> str:
 
 def reset_rate_limits() -> None:
     """Clear all rate limit state (useful in tests)."""
+    global _last_cleanup
     with _lock:
         _request_timestamps.clear()
+        _key_expiries.clear()
+        _last_cleanup = 0.0

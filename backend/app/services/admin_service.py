@@ -2,10 +2,11 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.errors import NotFoundError
+from app.core.errors import BadRequestError, NotFoundError
 from app.models.user import Company, RecruiterProfile, User
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.company_repo import CompanyRepository
@@ -330,3 +331,35 @@ class AdminService:
         ]
 
         return items, total
+
+    @staticmethod
+    def resolve_flag(
+        db: Session,
+        admin: User,
+        flag_id: uuid.UUID,
+        status: str,
+        note: str | None,
+        ip: str | None = None,
+    ) -> dict[str, str]:
+        """FR-ADM-2, FR-ADM-5: Resolve a flag and audit it in the same transaction."""
+        allowed = {"dismissed", "confirmed"}
+        if status not in allowed:
+            raise BadRequestError(f"status must be one of {allowed}")
+        res = db.execute(
+            text(
+                "UPDATE flags SET status = CAST(:s AS flag_status), reviewed_by = :admin, reviewed_at = now() WHERE id = :fid"
+            ),
+            {"s": status, "admin": admin.id, "fid": flag_id},
+        )
+        if res.rowcount == 0:
+            raise NotFoundError("Flag not found.")
+        AuditService.log(
+            db=db,
+            action="flag_resolved",
+            actor_id=admin.id,
+            entity_type="flag",
+            entity_id=str(flag_id),
+            detail={"status": status, "note": note},
+            ip=ip,
+        )
+        return {"message": "Flag resolved.", "status": status}

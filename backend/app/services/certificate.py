@@ -35,6 +35,22 @@ class CertificateError(Exception):
         self.status_code = status_code
 
 
+def verification_display_name(
+    full_name: str, show_full_name: bool, *, first_initial_only: bool = False
+) -> str:
+    """FR-STU-6: Apply the student's name privacy preference."""
+    if show_full_name:
+        return full_name
+    if first_initial_only:
+        return f"{full_name[:1]}."
+    parts = full_name.strip().split()
+    if len(parts) >= 2:
+        return f"{parts[0][:1]}. {parts[-1][:1]}."
+    if parts:
+        return f"{parts[0][:1]}."
+    return "Student"
+
+
 def issue_certificate_for_application(
     db: Session,
     application_id: uuid.UUID,
@@ -511,18 +527,7 @@ def get_public_verification(
     )
     db.commit()
 
-    # Student display name formatting (FR-STU-6, T-CRT-10)
-    if row.show_full_name_on_verification:
-        display_name = row.full_name
-    else:
-        # Format as initials
-        parts = row.full_name.strip().split()
-        if len(parts) >= 2:
-            display_name = f"{parts[0][0]}. {parts[-1][0]}."
-        elif len(parts) == 1:
-            display_name = f"{parts[0][0]}."
-        else:
-            display_name = "Student"
+    display_name = verification_display_name(row.full_name, row.show_full_name_on_verification)
 
     # T-CRT-09: No email, private feedback, rubric, AI output or internal IDs
     res = {

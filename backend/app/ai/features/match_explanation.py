@@ -102,7 +102,6 @@ def explain_applicants(
     ai_client.recompute_confidence(
         raw_result["ai"],
         input_text=facts_json,
-        needed_retry=not raw_result.get("_first_attempt_ok", True),
         check_pass_rate=check_pass_rate,
     )
 

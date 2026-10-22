@@ -393,3 +393,64 @@ def test_t_ai_10_injection_inputs_schema_enforced(injected_text: str, monkeypatc
     )
     items = [c["checklist_item"] for c in pr_res["result"]["items"]]
     assert "Bypass security" not in items
+
+
+@pytest.mark.parametrize(
+    ("previous", "pass_rate", "expected"),
+    [
+        ("low", 1.0, "low"),
+        ("medium", 1.0, "medium"),
+        ("high", 1.0, "high"),
+        ("high", 0.7, "medium"),
+        ("medium", 0.4, "low"),
+    ],
+)
+def test_recompute_confidence_only_downgrades(previous, pass_rate, expected):
+    from app.ai.client import recompute_confidence
+
+    meta = {"confidence": previous}
+    assert recompute_confidence(meta, input_text="x" * 100, check_pass_rate=pass_rate) == expected
+    assert meta["confidence"] == expected
+
+
+@pytest.mark.parametrize(
+    ("repo_name", "language", "evidence", "keep"),
+    [
+        ("my.repo", "Python", "Built my.repo, a backend.", True),
+        ("my-repo", "Python", "See my-repo.", True),
+        ("Visual Basic Tools", "Visual Basic", "Used Visual Basic in tools.", True),
+        ("backend", "C++", "Implemented in C++.", True),
+        ("backend", "C#", "Used C# for the API.", True),
+        ("a+b", "Python", "Built a+b (repo).", True),
+        ("go", "Go", "Built a Django app.", False),
+        ("repo", "C", "repository in CSS", False),
+        ("a.b", "Python", "Built axb", False),
+        ("repo", "C++", "Used C++Builder", False),
+    ],
+)
+def test_github_evidence_matches_whole_terms(monkeypatch, repo_name, language, evidence, keep):
+    from unittest.mock import Mock
+
+    from app.ai import client as ai_client
+    from app.ai.features import github_analysis
+
+    db = Mock()
+    db.execute.return_value.fetchall.return_value = [("Python",)]
+    monkeypatch.setattr(
+        ai_client,
+        "run",
+        lambda **kwargs: {
+            "ai": {"confidence": "medium"},
+            "result": GitHubAnalysisOutput(
+                summary="Repository summary",
+                skills=[GitHubSkillSuggestion(skill="Python", evidence=evidence)],
+            ),
+        },
+    )
+    result = github_analysis.analyse(
+        db=db,
+        user_id=uuid.uuid4(),
+        github_data={"repos": [{"name": repo_name, "language": language}]},
+    )
+    assert bool(result["result"]["skills"]) is keep
+    assert result["ai"]["confidence"] in {"low", "medium"}

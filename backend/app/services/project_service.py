@@ -3,13 +3,15 @@ FR-PRJ-1 to FR-PRJ-8, FR-ORG-5, BR-1.
 Authorization order: role → ownership → state (AGENTS.md rule 6).
 """
 
+import json
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.errors import ForbiddenError, NotFoundError, ValidationError
+from app.core.errors import BadRequestError, ForbiddenError, NotFoundError, ValidationError
 from app.models.project import Project
 from app.models.user import Company
 from app.repositories.project_repo import ProjectRepository
@@ -259,3 +261,47 @@ class ProjectService:
         db.commit()
         db.refresh(project)
         return project
+
+    @staticmethod
+    def report_project(
+        db: Session,
+        project_id: uuid.UUID,
+        reporter_id: uuid.UUID,
+        reason: str,
+        note: str | None = None,
+    ) -> dict[str, str]:
+        """FR-ADM-9: Create a manual flag for admin review."""
+        reason = reason.strip()
+        note = note.strip() if note else None
+        if not reason:
+            raise BadRequestError("reason is required.")
+
+        # Verify project exists
+        proj = db.execute(
+            text("SELECT id FROM projects WHERE id = :pid"),
+            {"pid": project_id},
+        ).fetchone()
+        if not proj:
+            raise NotFoundError("Project not found.")
+
+        flag_id = uuid.uuid4()
+        details_json = json.dumps(
+            {
+                "reason": reason,
+                "note": note,
+                "reported_by": str(reporter_id),
+            }
+        )
+        db.execute(
+            text("""
+                INSERT INTO flags (id, kind, entity_type, entity_id, details, status, created_at)
+                VALUES (:id, 'manual', 'project', :entity_id, CAST(:details AS jsonb), 'open', now())
+            """),
+            {
+                "id": flag_id,
+                "entity_id": project_id,
+                "details": details_json,
+            },
+        )
+        db.commit()
+        return {"message": "Report submitted. An admin will review it.", "flag_id": str(flag_id)}

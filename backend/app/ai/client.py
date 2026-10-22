@@ -236,8 +236,12 @@ def recompute_confidence(
     needed_retry: bool = False,
     check_pass_rate: float = 1.0,
 ) -> str:
-    """Recalculate AI metadata confidence from feature check pass rate."""
+    """Apply feature checks without raising the confidence already assigned by run."""
     new_conf = _compute_confidence(input_text, needed_retry, check_pass_rate)
+    confidence_order = {"low": 0, "medium": 1, "high": 2}
+    previous_conf = ai_meta.get("confidence", new_conf)
+    if confidence_order[previous_conf] < confidence_order[new_conf]:
+        new_conf = previous_conf
     ai_meta["confidence"] = new_conf
     return new_conf
 
@@ -362,6 +366,8 @@ def run(
             parsed = json.loads(raw)
             result = output_model.model_validate(parsed)
             needed_retry = True
+        except LLMError:
+            raise
         except Exception as exc:
             _write_log(
                 db,

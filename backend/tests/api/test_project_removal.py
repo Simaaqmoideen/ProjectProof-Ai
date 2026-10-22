@@ -7,6 +7,7 @@ Covers:
 
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
@@ -273,3 +274,67 @@ def test_admin_platform_stats_t_adm_09(client: TestClient):
     assert "certificates_issued" in stats
     assert stats["active_students"] >= 1
     assert stats["approved_companies"] >= 1
+
+
+@pytest.mark.parametrize("resolution", ["dismissed", "confirmed"])
+def test_report_resolution_is_audited(client, resolution):
+    student_h = _student_headers(client)
+    admin_h = _admin_headers(client)
+    pid = _create_and_publish_project(client)
+    report = client.post(
+        f"/api/v1/projects/{pid}/report",
+        json={"reason": "  Misleading description  ", "note": "  Please review  "},
+        headers=student_h,
+    )
+    assert report.status_code == 201, report.text
+    flag_id = report.json()["flag_id"]
+    response = client.post(
+        f"/api/v1/admin/flags/{flag_id}/resolve",
+        json={"reason": resolution, "note": "Reviewed"}, headers=admin_h,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == resolution
+    session = SessionLocal()
+    try:
+        flag = session.execute(
+            text("SELECT status, details, reviewed_by, reviewed_at FROM flags WHERE id = :fid"),
+            {"fid": flag_id},
+        ).one()
+        assert flag.status == resolution
+        assert flag.details["reason"] == "Misleading description"
+        assert flag.details["note"] == "Please review"
+        assert flag.reviewed_by is not None
+        assert flag.reviewed_at is not None
+        audit = session.execute(
+            text("SELECT detail FROM audit_log WHERE action = 'flag_resolved' AND entity_id = :fid"),
+            {"fid": flag_id},
+        ).scalar_one()
+        assert audit == {"status": resolution, "note": "Reviewed"}
+    finally:
+        session.close()
+
+
+def test_report_and_resolution_validate_before_writes(client):
+    student_h = _student_headers(client)
+    admin_h = _admin_headers(client)
+    missing_id = uuid.uuid4()
+    response = client.post(
+        f"/api/v1/projects/{missing_id}/report",
+        json={"reason": "   "}, headers=student_h,
+    )
+    assert response.status_code == 400, response.text
+    response = client.post(
+        f"/api/v1/projects/{missing_id}/report",
+        json={"reason": "Unknown project"}, headers=student_h,
+    )
+    assert response.status_code == 404, response.text
+    response = client.post(
+        f"/api/v1/admin/flags/{missing_id}/resolve",
+        json={"reason": "open"}, headers=admin_h,
+    )
+    assert response.status_code == 400, response.text
+    response = client.post(
+        f"/api/v1/admin/flags/{missing_id}/resolve",
+        json={"reason": "dismissed"}, headers=admin_h,
+    )
+    assert response.status_code == 404, response.text

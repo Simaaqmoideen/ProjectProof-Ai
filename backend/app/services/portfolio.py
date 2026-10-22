@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError
+from app.services.certificate import verification_display_name
 
 
 def get_portfolio(db: Session, student_user_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -120,3 +121,17 @@ def get_student_stats(db: Session, student_user_id: uuid.UUID) -> dict[str, Any]
         "rejected_projects": int(row[5]),
         "completion_rate": completion_rate,
     }
+
+
+def get_public_student_name(db: Session, student_user_id: uuid.UUID) -> str | None:
+    """Apply the verification name preference to a public portfolio."""
+    row = db.execute(
+        text("""
+            SELECT full_name, show_full_name_on_verification
+              FROM student_profiles WHERE user_id = :uid
+        """),
+        {"uid": student_user_id},
+    ).fetchone()
+    if not row:
+        return None
+    return verification_display_name(row[0], row[1] is not False, first_initial_only=True)

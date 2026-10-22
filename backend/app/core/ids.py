@@ -38,15 +38,10 @@ def compute_certificate_hash(
 ) -> str:
     if isinstance(completed_at, str):
         try:
-            dt = datetime.fromisoformat(completed_at)
-            if dt.tzinfo is not None:
-                completed_at_utc = dt.astimezone(UTC)
-            else:
-                completed_at_utc = dt.replace(tzinfo=UTC)
-            completed_at_str = completed_at_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-        except Exception:
-            completed_at_str = str(completed_at)
-    elif isinstance(completed_at, datetime):
+            completed_at = datetime.fromisoformat(completed_at)
+        except ValueError:
+            pass
+    if isinstance(completed_at, datetime):
         if completed_at.tzinfo is not None:
             completed_at_utc = completed_at.astimezone(UTC)
         else:

@@ -253,7 +253,7 @@ def test_t_evl_05_feedback_drafter(client: TestClient, test_setup):
     assert "suggested_public_summary" in data["result"]
 
 
-def test_t_rwd_04_resume_bullet_rewriter(client: TestClient, test_setup):
+def test_t_rwd_04_resume_bullet_rewriter(client: TestClient, test_setup, monkeypatch):
     """FR-RWD-4: Verified certificate generates STAR-formatted resume bullets."""
     student_h = _login(client, "phase7_student@univ.edu", "StudentPass123!")
 
@@ -310,6 +310,16 @@ def test_t_rwd_04_resume_bullet_rewriter(client: TestClient, test_setup):
     finally:
         db.close()
 
+    from app.ai import client as ai_client
+
+    captured = {}
+    original_run = ai_client.run
+
+    def capture_run(**kwargs):
+        captured.update(kwargs)
+        return original_run(**kwargs)
+
+    monkeypatch.setattr(ai_client, "run", capture_run)
     res = client.post(
         "/api/v1/ai/rewrite/resume-bullets",
         json={"certificate_id": str(cert_id)},
@@ -319,3 +329,18 @@ def test_t_rwd_04_resume_bullet_rewriter(client: TestClient, test_setup):
     data = res.json()
     assert data["ai"]["label"] == "AI draft"
     assert len(data["result"]["bullets"]) >= 1
+
+    assert captured["input_text"] == "\n".join(
+        captured["variables"][key] for key in ("project_title", "skills", "public_summary")
+    )
+    assert "Verified Resume Project" in captured["input_text"]
+    assert data["ai"]["log_id"]
+    db = SessionLocal()
+    try:
+        log = db.execute(
+            text("SELECT input_ref FROM ai_logs WHERE id = :lid"),
+            {"lid": int(data["ai"]["log_id"])},
+        ).scalar_one()
+        assert log == hashlib.sha256(captured["input_text"].encode()).hexdigest()[:16]
+    finally:
+        db.close()

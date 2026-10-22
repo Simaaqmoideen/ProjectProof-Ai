@@ -82,7 +82,9 @@ def rewrite(
         prompt_version="v1",
         variables=variables,
         output_model=ResumeBulletOutput,
-        input_text=cert_row[3],
+        input_text="\n".join(
+            variables[key] for key in ("project_title", "skills", "public_summary")
+        ),
     )
     output: ResumeBulletOutput = envelope["result"]
     return {

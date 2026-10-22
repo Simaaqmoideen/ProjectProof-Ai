@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.errors import BadRequestError, NotFoundError
 from app.db import get_db
 from app.deps import require_roles
 from app.models.user import User
@@ -24,7 +23,6 @@ from app.schemas.student import (
 from app.services import platform_stats as platform_stats_service
 from app.services import project_removal as project_removal_service
 from app.services.admin_service import AdminService
-from app.services.audit_service import AuditService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -369,29 +367,16 @@ def resolve_flag(
     db: Session = Depends(get_db),
 ):
     """FR-ADM-2: Resolve a flag (dismissed | confirmed)."""
-    allowed = {"dismissed", "confirmed"}
-    if data.reason not in allowed:
-        raise BadRequestError(f"status must be one of {allowed}")
-    res = db.execute(
-        text(
-            "UPDATE flags SET status = CAST(:s AS flag_status), reviewed_by = :admin, reviewed_at = now() WHERE id = :fid"
-        ),
-        {"s": data.reason, "admin": admin.id, "fid": flag_id},
-    )
-    if res.rowcount == 0:
-        raise NotFoundError("Flag not found.")
-    ip = request.client.host if request.client else None
-    AuditService.log(
-        db=db,
-        action="flag_resolved",
-        actor_id=admin.id,
-        entity_type="flag",
-        entity_id=str(flag_id),
-        detail={"status": data.reason, "note": data.note},
-        ip=ip,
+    result = AdminService.resolve_flag(
+        db,
+        admin=admin,
+        flag_id=flag_id,
+        status=data.reason,
+        note=data.note,
+        ip=request.client.host if request.client else None,
     )
     db.commit()
-    return {"message": "Flag resolved.", "status": data.reason}
+    return result
 
 
 # ─── Anomaly Detection Scan (FR-ADM-7) ─────────────────────────────────────────

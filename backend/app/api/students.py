@@ -348,14 +348,7 @@ def get_public_portfolio(
 ):
     """FR-STU-10, BR-8: Public portfolio for a student. Returns 404 if private."""
     items = portfolio_service.get_public_portfolio(db, student_id)
-    name_row = db.execute(
-        text("SELECT full_name, show_full_name_on_verification FROM student_profiles WHERE user_id = :uid"),
-        {"uid": student_id},
-    ).fetchone()
-    student_name = None
-    if name_row:
-        full_name, show_full = name_row[0], name_row[1]
-        student_name = full_name if show_full is not False else f"{full_name[0]}."
+    student_name = portfolio_service.get_public_student_name(db, student_id)
     return PortfolioResponse(
         items=[PortfolioItem(**i) for i in items],
         total=len(items),
