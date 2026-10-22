@@ -60,9 +60,7 @@ test.describe('Scenario 1 – Happy Path: Public verification page', () => {
       await expect(page).not.toHaveTitle(/error|not found/i);
 
       // Must show "Verified" or "Issued" text — both icon AND text, never color alone
-      await expect(
-        page.getByRole('heading', { level: 1 }).or(page.getByText(/verified|issued/i).first()),
-      ).toBeVisible();
+      await expect(page.getByText(/verified|issued/i).first()).toBeVisible();
 
       // Must show project title
       await expect(page.getByText(/project title|demo project/i).first()).toBeVisible();
@@ -206,11 +204,15 @@ test.describe('Scenario 3 – Mobile/Accessibility: 360 px viewport and keyboard
       const isVisible = await btn.isVisible();
       if (!isVisible) continue;
 
-      const label =
-        (await btn.getAttribute('aria-label')) ??
-        (await btn.textContent()) ??
-        (await btn.getAttribute('title')) ??
-        '';
+      const ariaLabel = (await btn.getAttribute('aria-label'))?.trim();
+      const textContent = (await btn.textContent())?.trim();
+      const title = (await btn.getAttribute('title'))?.trim();
+      const labelledBy = await btn.getAttribute('aria-labelledby');
+      let labelledByText = '';
+      if (labelledBy) {
+        labelledByText = (await page.locator(`#${labelledBy}`).textContent())?.trim() ?? '';
+      }
+      const label = ariaLabel || labelledByText || textContent || title || '';
       expect(label.trim().length, `Button has no accessible label: ${await btn.innerHTML()}`).toBeGreaterThan(0);
     }
   });
@@ -232,10 +234,7 @@ test.describe('Scenario 3 – Mobile/Accessibility: 360 px viewport and keyboard
     await page.goto(`/verify/${ISSUED_QR}`);
 
     // The status region must contain text (not be aria-hidden)
-    // Look for any element explicitly labelled as "status"
-    const statusEl = page
-      .getByRole('status')
-      .or(page.getByText(/verified|issued|revoked/i).first());
+    const statusEl = page.getByText(/verified|issued|revoked/i).first();
 
     await expect(statusEl).toBeVisible();
     const text = await statusEl.textContent();

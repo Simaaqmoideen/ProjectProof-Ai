@@ -129,9 +129,12 @@ def _verify_sentence(
     # Reject if sentence mentions any technology/skill not in the applicant's facts
     if all_skills:
         for sk in all_skills:
-            if len(sk) > 2 and re.search(rf"\b{re.escape(sk)}\b", sentence_lower):
-                if sk not in fact_skills:
-                    return fallback
+            if (
+                len(sk) > 2
+                and re.search(rf"\b{re.escape(sk)}\b", sentence_lower)
+                and sk not in fact_skills
+            ):
+                return fallback
 
     # Sentence must reference at least one fact skill
     has_fact_skill = any(re.search(rf"\b{re.escape(fs)}\b", sentence_lower) for fs in fact_skills if fs)

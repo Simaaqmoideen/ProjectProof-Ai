@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.errors import BadRequestError, NotFoundError
 from app.db import get_db
 from app.deps import require_roles
 from app.models.user import User
@@ -20,7 +21,6 @@ from app.schemas.student import (
     ProjectRemovalRequest,
     ProjectRemovalResponse,
 )
-from app.core.errors import BadRequestError, NotFoundError
 from app.services import platform_stats as platform_stats_service
 from app.services import project_removal as project_removal_service
 from app.services.admin_service import AdminService

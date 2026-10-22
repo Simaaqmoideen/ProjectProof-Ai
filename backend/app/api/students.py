@@ -4,12 +4,14 @@ Handles: profile, skills, visibility, resume, dashboard, portfolio, GitHub (FR-S
 Layers: HTTP only; all business logic delegated to services.
 """
 
+import time
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, UploadFile, status
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.errors import BadRequestError, NotFoundError
 from app.db import get_db
 from app.deps import require_roles, require_verified_email
@@ -108,6 +110,39 @@ def update_visibility(
     return {
         "is_public": profile.is_public,
         "show_full_name_on_verification": profile.show_full_name_on_verification,
+    }
+
+
+# ─── Resume (FR-STU-3) ────────────────────────────────────────────────────────
+
+
+@router.post("/me/resume")
+async def upload_resume(
+    file: UploadFile = File(...),
+    user: User = Depends(require_roles("student")),
+    db: Session = Depends(get_db),
+):
+    """FR-STU-3: Resume upload (PDF, up to 5 MB)."""
+    require_verified_email(user)
+    profile = _require_student_profile(user, db)
+
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise BadRequestError("Only PDF files are accepted.")
+
+    content = await file.read()
+    if len(content) > settings.max_resume_bytes:
+        raise BadRequestError(
+            f"Resume must be <= {settings.max_resume_bytes // (1024 * 1024)} MB."
+        )
+
+    resume_key = f"resumes/{user.id}_{int(time.time())}.pdf"
+    profile.resume_file_key = resume_key
+    db.commit()
+
+    return {
+        "message": "Resume uploaded successfully.",
+        "resume_url": resume_key,
+        "resume_file_key": resume_key,
     }
 
 

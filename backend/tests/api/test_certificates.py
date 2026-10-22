@@ -19,7 +19,6 @@ from app.core.rate_limit import reset_rate_limits
 from app.db import SessionLocal
 from app.services.badges import recalculate_student_badges
 from app.services.certificate import (
-    issue_certificate_for_application,
     revoke_certificate,
     verify_certificate_content_hash,
 )

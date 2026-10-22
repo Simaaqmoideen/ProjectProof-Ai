@@ -93,6 +93,7 @@ def test_resume_analyze_and_accept_t_ai_07(client: TestClient):
         db.close()
 
     # 1. Analyze
+    resume_text = "Student developer experienced with Python software engineering and SQL queries."
     res = client.post(
         "/api/v1/ai/resume/analyze", json={"resume_text": resume_text}, headers=headers
     )

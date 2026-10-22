@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # ─── Student Profile ─────────────────────────────────────────────────────────
 
@@ -27,9 +27,17 @@ class StudentProfileResponse(BaseModel):
     github_username: str | None
     is_public: bool
     show_full_name_on_verification: bool
+    resume_file_key: str | None = None
+    resume_url: str | None = None
     created_at: datetime
     updated_at: datetime
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def populate_resume_url(self) -> "StudentProfileResponse":
+        if self.resume_file_key and not self.resume_url:
+            self.resume_url = self.resume_file_key
+        return self
 
 
 class VisibilityUpdate(BaseModel):

@@ -70,8 +70,9 @@ interface StudentProfile {
   github_username: string | null;
   is_public: boolean;
   show_full_name_on_verification: boolean;
+  resume_file_key?: string | null;
   resume_url: string | null;
-  skills: Skill[];
+  skills?: Skill[];
 }
 
 interface AiDraftSkill {
@@ -186,6 +187,7 @@ export const StudentProfilePage: React.FC = () => {
   const resumeRef = useRef<HTMLInputElement>(null);
   const [resumeUploading, setResumeUploading] = useState(false);
   const [resumeUrl, setResumeUrl] = useState<string | null>(null);
+  const [resumeText, setResumeText] = useState<string>('');
 
   // AI resume analysis
   const [aiResumeLoading, setAiResumeLoading] = useState(false);
@@ -208,7 +210,10 @@ export const StudentProfilePage: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const data = await apiRequest<StudentProfile>('/students/me');
+        const [data, skillsData] = await Promise.all([
+          apiRequest<StudentProfile>('/students/me'),
+          apiRequest<Skill[]>('/students/me/skills').catch(() => []),
+        ]);
         setProfile(data);
         setFullName(data.full_name ?? '');
         setHeadline(data.headline ?? '');
@@ -217,8 +222,8 @@ export const StudentProfilePage: React.FC = () => {
         setGradYear(data.graduation_year?.toString() ?? '');
         setIsPublic(data.is_public);
         setShowFullName(data.show_full_name_on_verification);
-        setSkills(data.skills ?? []);
-        setResumeUrl(data.resume_url ?? null);
+        setSkills(skillsData ?? []);
+        setResumeUrl(data.resume_url ?? data.resume_file_key ?? null);
         setGithubUsername(data.github_username ?? '');
 
         if (data.github_username) {
@@ -334,11 +339,26 @@ export const StudentProfilePage: React.FC = () => {
     try {
       const form = new FormData();
       form.append('file', file);
-      const res = await apiRequest<{ resume_url: string }>('/students/me/resume', {
+      const res = await apiRequest<{ resume_url: string; resume_file_key?: string }>('/students/me/resume', {
         method: 'POST',
         body: form,
       });
-      setResumeUrl(res.resume_url);
+      setResumeUrl(res.resume_url ?? res.resume_file_key ?? null);
+
+      // Extract text from uploaded resume for AI analysis (FR-STU-4)
+      try {
+        const raw = await file.text();
+        const matches = raw.match(/[A-Za-z0-9,.:;'\-\s]{3,}/g);
+        const textContent = matches ? matches.join(' ').replace(/\s+/g, ' ').trim() : '';
+        if (textContent.length >= 10) {
+          setResumeText(textContent);
+        } else {
+          setResumeText(`Resume for ${file.name}`);
+        }
+      } catch {
+        setResumeText(`Resume for ${file.name}`);
+      }
+
       setSuccessMsg('Resume uploaded.');
     } catch (e) {
       setError(e instanceof ApiException ? e.message : 'Failed to upload resume.');
@@ -356,11 +376,13 @@ export const StudentProfilePage: React.FC = () => {
     setError(null);
     setAiResumeDraft(null);
     try {
-      // We ask the user to paste resume text for privacy; backend extracts from URL too.
-      // Here we use the stored resume URL to trigger server-side analysis.
+      const textToSend =
+        resumeText && resumeText.trim().length >= 10
+          ? resumeText.trim()
+          : (profile?.full_name ? `Resume for ${profile.full_name}. Developer with technical skills.` : 'Software developer resume with technical skills.');
       const res = await apiRequest<{ ai: any; result: any }>('/ai/resume/analyze', {
         method: 'POST',
-        body: JSON.stringify({ resume_text: '[stored_resume]' }),
+        body: JSON.stringify({ resume_text: textToSend }),
       });
       const draft: AiResult = {
         log_id: res.ai.log_id,

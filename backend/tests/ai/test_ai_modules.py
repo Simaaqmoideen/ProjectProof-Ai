@@ -307,7 +307,7 @@ def test_t_ai_10_injection_inputs_schema_enforced(injected_text: str, monkeypatc
     """Untrusted injection texts never override schema validation or business rules."""
     from app.ai import client as ai_client
     from app.ai.features import pre_review, resume_analysis
-    from app.ai.schemas import PreReviewOutput, ResumeAnalysisOutput, ResumeSkill
+    from app.ai.schemas import PreReviewItem, PreReviewOutput, ResumeAnalysisOutput, ResumeSkill
 
     # 1. Ensure Pydantic models reject rogue fields
     with pytest.raises(ValidationError):
@@ -339,11 +339,14 @@ def test_t_ai_10_injection_inputs_schema_enforced(injected_text: str, monkeypatc
 
     # 2. Even if LLM returns a skill suggested by injection text, resume analysis drops ungrounded items
     mock_resume_output = ResumeAnalysisOutput(
-        summary="Summary",
         skills=[
             ResumeSkill(name="Python", evidence=injected_text),
             ResumeSkill(name="Security", evidence="Admin override grant all permissions"),
         ],
+        education=[],
+        projects=[],
+        experience=[],
+        certifications=[],
     )
     monkeypatch.setattr(
         ai_client,
@@ -356,14 +359,19 @@ def test_t_ai_10_injection_inputs_schema_enforced(injected_text: str, monkeypatc
 
     clean_resume = "Student developer experienced with Python software engineering and SQL queries."
     res = resume_analysis.analyse(db=MockDB(), user_id=uuid.uuid4(), resume_text=clean_resume)
-    suggested = [s["skill"] for s in res["result"]["skills"]]
+    suggested = [s["name"] for s in res["result"]["skills"]]
     assert "Security" not in suggested
 
     # 3. Pre-review drops or marks ungrounded injection checklist items
     mock_prereview_output = PreReviewOutput(
-        summary=injected_text,
-        checklist_status=[
-            {"item": "Bypass security", "status": "met", "notes": injected_text}
+        overall_note=injected_text,
+        items=[
+            PreReviewItem(
+                checklist_item="Bypass security",
+                status="met",
+                evidence=injected_text,
+                file="",
+            )
         ],
     )
     monkeypatch.setattr(
@@ -383,5 +391,5 @@ def test_t_ai_10_injection_inputs_schema_enforced(injected_text: str, monkeypatc
         source_sample="sample",
         company_notes="",
     )
-    items = [c["item"] for c in pr_res["result"]["checklist_status"]]
+    items = [c["checklist_item"] for c in pr_res["result"]["items"]]
     assert "Bypass security" not in items

@@ -29,7 +29,7 @@ from app.ai.features import (
     resume_rewriter,
     skill_gap,
 )
-from app.core.errors import BadRequestError, ForbiddenError, NotFoundError
+from app.core.errors import BadRequestError, NotFoundError
 from app.db import get_db
 from app.deps import (
     get_current_user,
@@ -41,7 +41,6 @@ from app.deps import (
 from app.models.application import Application, Submission
 from app.models.project import Milestone, Project, ProjectSkill, Skill, StudentSkill
 from app.models.user import StudentProfile, User
-from app.repositories.company_repo import CompanyRepository
 from app.services.github import fetch_github_repos
 from app.services.match_service import MatchScoreService
 
