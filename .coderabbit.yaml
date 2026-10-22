@@ -1,5 +1,5 @@
-# CodeRabbit Configuration
-version: "2"
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+version: 2
 language: "en"
 tone_instructions: "Review for architectural integrity, security, error handling, and test completeness. Note that ProjectProof AI enforces server-side XP calculation, immutable audit trails, live certificate verification via database views, and strict isolation of AI services."
 reviews:
@@ -11,5 +11,7 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    base_branches:
+      - ".*"
 chat:
   auto_reply: true

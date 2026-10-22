@@ -14,10 +14,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: psql postgresql://postgres:postgres@localhost:5432/projectproof -f schema.sql
-      - run: pip install -e "backend[dev]"
-      - run: ruff check backend
-      - run: pytest backend/tests --co -q || true
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client libpango-1.0-0 libpangoft2-1.0-0
+      - name: Initialize database schema
+        run: psql postgresql://postgres:postgres@localhost:5432/projectproof -f schema.sql
+      - name: Install Python dependencies
+        run: pip install -e "backend[dev]"
+      - name: Lint backend
+        run: cd backend && ruff check .
+      - name: Run backend tests
+        run: cd backend && pytest --tb=short -q
   frontend:
     runs-on: ubuntu-latest
     steps:
