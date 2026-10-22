@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 version: 2
 language: "en"
-tone_instructions: "Review for architectural integrity, security, error handling, and test completeness. Note that ProjectProof AI enforces server-side XP calculation, immutable audit trails, live certificate verification via database views, and strict isolation of AI services."
+tone_instructions: "Review for architectural integrity, security, error handling, and test completeness across FastAPI and React."
 reviews:
   profile: "assertive"
   request_changes_workflow: false
