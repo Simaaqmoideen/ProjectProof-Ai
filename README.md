@@ -201,7 +201,7 @@ ProjectProof-Ai/
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
-│   ├── tests/
+│   ���── tests/
 │   ├── package.json
 │   ├── vite.config.ts
 │   ├── playwright.config.ts
@@ -320,7 +320,7 @@ This project intentionally incorporates privacy and integrity controls:
 
 ## Project status
 
-This repository is currently structured as a proof-of-concept / project prototype with a full documentation backbone and architecture plan. It is intended to support validation, demo delivery, and future production implementation.
+This repository is currently structured as a proof-of-concept / project prototype with a full documentation backbone and architecture plan. It is intended to support validation, demo delivery, and future product development.
 
 ## Demo and reporting
 
