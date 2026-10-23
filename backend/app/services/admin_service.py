@@ -2,13 +2,15 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.errors import NotFoundError
+from app.core.errors import BadRequestError, ConflictError, NotFoundError
 from app.models.user import Company, RecruiterProfile, User
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.company_repo import CompanyRepository
+from app.repositories.flag_repo import FlagRepository
 from app.repositories.recruiter_repo import RecruiterRepository
 from app.repositories.token_repo import TokenRepository
 from app.repositories.user_repo import UserRepository
@@ -44,7 +46,9 @@ class AdminService:
         return results
 
     @staticmethod
-    def approve_company(db: Session, admin: User, company_id: uuid.UUID, ip: str | None = None) -> Company:
+    def approve_company(
+        db: Session, admin: User, company_id: uuid.UUID, ip: str | None = None
+    ) -> Company:
         """FR-ADM-1: Approve company from the queue; sets trust score to 50 (BR-6) in the same transaction."""
         company = CompanyRepository.get_by_id(db, company_id)
         if not company:
@@ -129,9 +133,11 @@ class AdminService:
 
         # FR-ORG-7 & T-ORG-07: Suspending a company closes its open projects. Existing certificates stay valid.
         # Close open projects in projects table if any exist
-        from sqlalchemy import text
+
         db.execute(
-            text("UPDATE projects SET status = 'closed', updated_at = now() WHERE company_id = :cid AND status = 'open'"),
+            text(
+                "UPDATE projects SET status = 'closed', updated_at = now() WHERE company_id = :cid AND status = 'open'"
+            ),
             {"cid": company_id},
         )
 
@@ -150,7 +156,9 @@ class AdminService:
         return company
 
     @staticmethod
-    def get_recruiter_queue(db: Session, status: str | None = "pending") -> list[RecruiterApprovalItem]:
+    def get_recruiter_queue(
+        db: Session, status: str | None = "pending"
+    ) -> list[RecruiterApprovalItem]:
         items = RecruiterRepository.list_by_status(db, status=status)
         return [
             RecruiterApprovalItem(
@@ -166,7 +174,9 @@ class AdminService:
         ]
 
     @staticmethod
-    def approve_recruiter(db: Session, admin: User, user_id: uuid.UUID, ip: str | None = None) -> RecruiterProfile:
+    def approve_recruiter(
+        db: Session, admin: User, user_id: uuid.UUID, ip: str | None = None
+    ) -> RecruiterProfile:
         recruiter = RecruiterRepository.get_by_user_id(db, user_id)
         if not recruiter:
             raise NotFoundError("Recruiter not found.")
@@ -321,3 +331,33 @@ class AdminService:
         ]
 
         return items, total
+
+    @staticmethod
+    def resolve_flag(
+        db: Session,
+        admin: User,
+        flag_id: uuid.UUID,
+        status: str,
+        note: str | None,
+        ip: str | None = None,
+    ) -> dict[str, str]:
+        """FR-ADM-2, FR-ADM-5: Resolve a flag and audit it in the same transaction."""
+        allowed = {"dismissed", "confirmed"}
+        if status not in allowed:
+            raise BadRequestError(f"status must be one of {allowed}")
+        res = FlagRepository.resolve_open(db, flag_id, admin.id, status)
+        if res.rowcount == 0:
+            existing_status = FlagRepository.get_status(db, flag_id)
+            if existing_status is None:
+                raise NotFoundError("Flag not found.")
+            raise ConflictError("Flag is already resolved.")
+        AuditService.log(
+            db=db,
+            action="flag_resolved",
+            actor_id=admin.id,
+            entity_type="flag",
+            entity_id=str(flag_id),
+            detail={"status": status, "note": note},
+            ip=ip,
+        )
+        return {"message": "Flag resolved.", "status": status}

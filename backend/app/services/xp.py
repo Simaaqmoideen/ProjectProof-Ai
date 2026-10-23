@@ -3,6 +3,7 @@
 Formula: round(min(cap, base_per_day * duration_days * difficulty_multiplier * evaluation_multiplier))
 See docs/01-product-requirements.md BR-1.
 """
+
 from app.config import settings
 
 

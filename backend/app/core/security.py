@@ -14,9 +14,21 @@ from app.core.errors import ValidationError
 ph = PasswordHasher()
 
 COMMON_PASSWORDS = {
-    "password", "password123", "1234567890", "qwertyuiop", "admin12345",
-    "letmein123", "welcome123", "iloveyou12", "monkey1234", "dragon1234",
-    "master1234", "football12", "shadow1234", "princess12", "superman12",
+    "password",
+    "password123",
+    "1234567890",
+    "qwertyuiop",
+    "admin12345",
+    "letmein123",
+    "welcome123",
+    "iloveyou12",
+    "monkey1234",
+    "dragon1234",
+    "master1234",
+    "football12",
+    "shadow1234",
+    "princess12",
+    "superman12",
 }
 
 

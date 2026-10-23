@@ -1,6 +1,7 @@
 """Application repository — parameterised queries only (AGENTS.md rule 5).
 FR-APP-1 to FR-APP-10.
 """
+
 import uuid
 from datetime import datetime
 
@@ -68,7 +69,9 @@ class ApplicationRepository:
         if status:
             stmt = stmt.where(Application.status == status)
         total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
-        stmt = stmt.order_by(Application.match_score.desc().nulls_last(), Application.applied_at.asc())
+        stmt = stmt.order_by(
+            Application.match_score.desc().nulls_last(), Application.applied_at.asc()
+        )
         stmt = stmt.offset((page - 1) * page_size).limit(page_size)
         return list(db.execute(stmt).scalars().all()), total
 

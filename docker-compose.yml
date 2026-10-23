@@ -7,7 +7,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-    ports: ["5432:5432"]
+    ports: ["5433:5432"]
   api:
     build: ./backend
     env_file: .env

@@ -23,7 +23,9 @@ class AppError(Exception):
 
 
 class UnauthenticatedError(AppError):
-    def __init__(self, message: str = "Authentication required", details: list[dict[str, Any]] | None = None):
+    def __init__(
+        self, message: str = "Authentication required", details: list[dict[str, Any]] | None = None
+    ):
         super().__init__(
             code="unauthenticated",
             message=message,
@@ -33,7 +35,9 @@ class UnauthenticatedError(AppError):
 
 
 class ForbiddenError(AppError):
-    def __init__(self, message: str = "Access forbidden", details: list[dict[str, Any]] | None = None):
+    def __init__(
+        self, message: str = "Access forbidden", details: list[dict[str, Any]] | None = None
+    ):
         super().__init__(
             code="forbidden",
             message=message,
@@ -43,7 +47,9 @@ class ForbiddenError(AppError):
 
 
 class NotFoundError(AppError):
-    def __init__(self, message: str = "Resource not found", details: list[dict[str, Any]] | None = None):
+    def __init__(
+        self, message: str = "Resource not found", details: list[dict[str, Any]] | None = None
+    ):
         super().__init__(
             code="not_found",
             message=message,
@@ -53,7 +59,9 @@ class NotFoundError(AppError):
 
 
 class ConflictError(AppError):
-    def __init__(self, message: str = "Resource state conflict", details: list[dict[str, Any]] | None = None):
+    def __init__(
+        self, message: str = "Resource state conflict", details: list[dict[str, Any]] | None = None
+    ):
         super().__init__(
             code="conflict",
             message=message,
@@ -63,7 +71,9 @@ class ConflictError(AppError):
 
 
 class ValidationError(AppError):
-    def __init__(self, message: str = "Validation failed", details: list[dict[str, Any]] | None = None):
+    def __init__(
+        self, message: str = "Validation failed", details: list[dict[str, Any]] | None = None
+    ):
         super().__init__(
             code="validation_error",
             message=message,
@@ -72,8 +82,22 @@ class ValidationError(AppError):
         )
 
 
+class BadRequestError(AppError):
+    def __init__(self, message: str = "Bad request", details: list[dict[str, Any]] | None = None):
+        super().__init__(
+            code="bad_request",
+            message=message,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            details=details,
+        )
+
+
 class FileTooLargeError(AppError):
-    def __init__(self, message: str = "File exceeds maximum permitted size", details: list[dict[str, Any]] | None = None):
+    def __init__(
+        self,
+        message: str = "File exceeds maximum permitted size",
+        details: list[dict[str, Any]] | None = None,
+    ):
         super().__init__(
             code="file_too_large",
             message=message,
@@ -83,7 +107,11 @@ class FileTooLargeError(AppError):
 
 
 class RateLimitedError(AppError):
-    def __init__(self, message: str = "Too many requests. Please try again later.", details: list[dict[str, Any]] | None = None):
+    def __init__(
+        self,
+        message: str = "Too many requests. Please try again later.",
+        details: list[dict[str, Any]] | None = None,
+    ):
         super().__init__(
             code="rate_limited",
             message=message,
@@ -92,7 +120,9 @@ class RateLimitedError(AppError):
         )
 
 
-def format_error_response(code: str, message: str, request_id: str, details: list[dict[str, Any]] | None = None) -> dict:
+def format_error_response(
+    code: str, message: str, request_id: str, details: list[dict[str, Any]] | None = None
+) -> dict:
     return {
         "error": {
             "code": code,
@@ -120,17 +150,23 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     details = []
     for err in exc.errors():
         field = ".".join(str(loc) for loc in err.get("loc", []))
-        details.append({
-            "field": field,
-            "issue": err.get("msg", "invalid"),
-        })
+        details.append(
+            {
+                "field": field,
+                "issue": err.get("msg", "invalid"),
+            }
+        )
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content=format_error_response("validation_error", "Request validation failed", request_id, details),
+        content=format_error_response(
+            "validation_error", "Request validation failed", request_id, details
+        ),
     )
 
 
-async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+async def starlette_http_exception_handler(
+    request: Request, exc: StarletteHTTPException
+) -> JSONResponse:
     request_id = get_request_id(request)
     code_map = {
         400: "validation_error",
@@ -145,4 +181,5 @@ async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPE
     return JSONResponse(
         status_code=exc.status_code,
         content=format_error_response(code, str(exc.detail), request_id, []),
+        headers=exc.headers,
     )

@@ -51,11 +51,10 @@ class RecruiterRepository:
         db.execute(stmt)
 
     @staticmethod
-    def list_by_status(db: Session, status: str | None = None) -> list[tuple[RecruiterProfile, User]]:
-        stmt = (
-            select(RecruiterProfile, User)
-            .join(User, User.id == RecruiterProfile.user_id)
-        )
+    def list_by_status(
+        db: Session, status: str | None = None
+    ) -> list[tuple[RecruiterProfile, User]]:
+        stmt = select(RecruiterProfile, User).join(User, User.id == RecruiterProfile.user_id)
         if status:
             stmt = stmt.where(RecruiterProfile.status == status)
         stmt = stmt.order_by(RecruiterProfile.created_at.desc())

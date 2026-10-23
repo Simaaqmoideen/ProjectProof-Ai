@@ -17,7 +17,9 @@ class RecruiterService:
         ip: str | None = None,
     ) -> RecruiterProfile:
         if user.role != "recruiter":
-            raise ForbiddenError("Only users with recruiter role can complete recruiter registration.")
+            raise ForbiddenError(
+                "Only users with recruiter role can complete recruiter registration."
+            )
 
         existing = RecruiterRepository.get_by_user_id(db, user.id)
         if existing:

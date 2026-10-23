@@ -2,6 +2,7 @@
 
 See docs/01-product-requirements.md BR-6.
 """
+
 import uuid
 from datetime import UTC, datetime
 
@@ -23,17 +24,21 @@ def adjust_company_trust_score(db: Session, company_id: uuid.UUID, delta: int) -
     current = row[0]
     new_score = max(0, min(100, current + delta))
     db.execute(
-        text("UPDATE companies SET trust_score = :score, updated_at = now() WHERE id = :company_id"),
+        text(
+            "UPDATE companies SET trust_score = :score, updated_at = now() WHERE id = :company_id"
+        ),
         {"score": new_score, "company_id": company_id},
     )
     return new_score
 
 
-def on_evaluation_completed(db: Session, company_id: uuid.UUID, submitted_at: datetime, evaluated_at: datetime | None = None) -> None:
+def on_evaluation_completed(
+    db: Session, company_id: uuid.UUID, submitted_at: datetime, evaluated_at: datetime | None = None
+) -> None:
     """Apply BR-6 fast evaluation bonus (+5 if within 5 days, capped at +30 total bonus)."""
     if evaluated_at is None:
         evaluated_at = datetime.now(UTC)
-    
+
     # Days elapsed
     days = (evaluated_at - submitted_at).total_seconds() / 86400.0
     if days <= 5.0:

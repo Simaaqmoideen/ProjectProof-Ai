@@ -1,6 +1,7 @@
 """Workspace API routes: workspace view, milestone check-ins, task progress and personal sub-tasks.
 See docs/04-api-specification.md Section 7 and FR-WRK-1 to 8.
 """
+
 import uuid
 
 from fastapi import APIRouter, Depends, status

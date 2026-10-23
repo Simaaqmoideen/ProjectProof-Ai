@@ -1,6 +1,7 @@
 """Evaluation repository: submissions, evaluations, and appeals.
 See AGENTS.md rule 5 and docs/02-database-schema.md.
 """
+
 import uuid
 from datetime import UTC, datetime
 
@@ -22,7 +23,9 @@ class EvaluationRepository:
 
     def get_latest_submission_version(self, application_id: uuid.UUID) -> int:
         version = self.db.execute(
-            text("SELECT COALESCE(MAX(version), 0) FROM submissions WHERE application_id = :app_id"),
+            text(
+                "SELECT COALESCE(MAX(version), 0) FROM submissions WHERE application_id = :app_id"
+            ),
             {"app_id": application_id},
         ).scalar()
         return version or 0
@@ -64,8 +67,9 @@ class EvaluationRepository:
         return sub_id
 
     def get_submission(self, submission_id: uuid.UUID) -> dict | None:
-        row = self.db.execute(
-            text("""
+        row = (
+            self.db.execute(
+                text("""
                 SELECT s.id, s.application_id, s.version, s.repo_url, s.file_key, s.notes,
                        s.similarity_score, s.similarity_report, s.ai_prereview, s.submitted_at,
                        a.student_id, a.project_id, p.company_id
@@ -74,25 +78,33 @@ class EvaluationRepository:
                 JOIN projects p ON p.id = a.project_id
                 WHERE s.id = :sub_id
             """),
-            {"sub_id": submission_id},
-        ).mappings().fetchone()
+                {"sub_id": submission_id},
+            )
+            .mappings()
+            .fetchone()
+        )
         return dict(row) if row else None
 
     def get_evaluation_by_submission(self, submission_id: uuid.UUID) -> dict | None:
-        row = self.db.execute(
-            text("""
+        row = (
+            self.db.execute(
+                text("""
                 SELECT id, submission_id, reviewer_id, rubric_scores, overall_score,
                        feedback, public_summary, used_ai_draft, decision, evaluated_at
                 FROM evaluations
                 WHERE submission_id = :sub_id
             """),
-            {"sub_id": submission_id},
-        ).mappings().fetchone()
+                {"sub_id": submission_id},
+            )
+            .mappings()
+            .fetchone()
+        )
         return dict(row) if row else None
 
     def get_evaluation(self, evaluation_id: uuid.UUID) -> dict | None:
-        row = self.db.execute(
-            text("""
+        row = (
+            self.db.execute(
+                text("""
                 SELECT e.id, e.submission_id, e.reviewer_id, e.rubric_scores, e.overall_score,
                        e.feedback, e.public_summary, e.used_ai_draft, e.decision, e.evaluated_at,
                        s.application_id, a.student_id, p.company_id
@@ -102,8 +114,11 @@ class EvaluationRepository:
                 JOIN projects p ON p.id = a.project_id
                 WHERE e.id = :eval_id
             """),
-            {"eval_id": evaluation_id},
-        ).mappings().fetchone()
+                {"eval_id": evaluation_id},
+            )
+            .mappings()
+            .fetchone()
+        )
         return dict(row) if row else None
 
     def create_evaluation(
@@ -119,6 +134,7 @@ class EvaluationRepository:
     ) -> uuid.UUID:
         eval_id = uuid.uuid4()
         import json
+
         rubric_json = json.dumps(rubric_scores) if rubric_scores else None
         self.db.execute(
             text("""
@@ -151,13 +167,21 @@ class EvaluationRepository:
         )
 
     def get_open_appeal_for_evaluation(self, evaluation_id: uuid.UUID) -> dict | None:
-        row = self.db.execute(
-            text("SELECT id, evaluation_id, status FROM appeals WHERE evaluation_id = :eval_id AND status = 'open'"),
-            {"eval_id": evaluation_id},
-        ).mappings().fetchone()
+        row = (
+            self.db.execute(
+                text(
+                    "SELECT id, evaluation_id, status FROM appeals WHERE evaluation_id = :eval_id AND status = 'open'"
+                ),
+                {"eval_id": evaluation_id},
+            )
+            .mappings()
+            .fetchone()
+        )
         return dict(row) if row else None
 
-    def create_appeal(self, evaluation_id: uuid.UUID, student_id: uuid.UUID, reason: str) -> uuid.UUID:
+    def create_appeal(
+        self, evaluation_id: uuid.UUID, student_id: uuid.UUID, reason: str
+    ) -> uuid.UUID:
         appeal_id = uuid.uuid4()
         self.db.execute(
             text("""

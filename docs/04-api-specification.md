@@ -67,10 +67,12 @@ Password rules: at least 10 characters, checked against a list of common passwor
 | `GET /students/me/skills` | student | Own skills |
 | `PUT /students/me/skills` | student | Replace skills list `[{ "skill": "Python", "proficiency": 4 }]` |
 | `POST /students/me/resume` | student | Upload PDF (multipart) |
+| `GET /students/me/resume/text` | student | Extract bounded text from the authenticated student's stored PDF for resume analysis |
 | `DELETE /students/me/resume` | student | Remove file and parsed data |
 | `GET /students/me/dashboard` | student | Next action, active projects, XP, level, badges, stats |
 | `GET /students/me/certificates` | student | Own certificates |
 | `GET /students/me/portfolio` | student | Verified project history from `v_student_portfolio` (FR-STU-10), issued and revoked |
+| `GET /students/{student_id}/portfolio` | public | Public portfolio only; returns 404 when the profile is private or unavailable |
 | `PUT /students/me/github` | student | `{ "username": "octocat" }`; reads the public profile and repositories through GitHub's public API; stores nothing but the username until an analysis is accepted (FR-STU-8) |
 | `GET /students/me/github` | student | Languages, repository count, recent activity; labelled "self-linked, not verified" |
 | `DELETE /students/me/github` | student | Unlink and delete the stored GitHub summary |
@@ -173,11 +175,14 @@ Password rules: at least 10 characters, checked against a list of common passwor
   "evaluation": { "summary": "All 6 milestones met. …", "evaluated_at": "2026-08-20T10:12:00Z" },
   "skills": ["Python","Flask","MySQL","REST API"],
   "timeline": { "applied_at": "…", "started_at": "…", "completed_at": "…" },
+  "qr_code_data_uri": "data:image/png;base64,…",
   "checked_at": "2026-10-03T10:42:00Z",
   "disclaimer": "This is a ProjectProof verification record. It is not formal employment experience." }
 // revoked example: "status": "revoked", plus "revoked_at" and "revocation_reason" (category only)
 // unknown value: 404 with the standard error body, same timing as a found record
 ```
+
+The live public response includes a `qr_code_data_uri` PNG for the record's QR-token URL so the verification page can display a scannable code. The QR token remains encoded in the image and is not returned as a separate response field.
 
 The public response never includes email, private feedback, AI output or internal IDs.
 
