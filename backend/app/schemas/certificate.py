@@ -49,6 +49,7 @@ class PublicVerificationResponse(BaseModel):
     skills: list[str] = Field(default_factory=list)
     timeline: PublicVerificationTimeline
     checked_at: str
+    qr_code_data_uri: str
     disclaimer: str = (
         "This is a ProjectProof verification record. It is not formal employment experience."
     )

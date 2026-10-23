@@ -3,6 +3,7 @@
 See AGENTS.md rule 3 and docs/03-tech-stack-and-architecture.md section 5.
 """
 
+import base64
 import hashlib
 import io
 import json as _json
@@ -49,6 +50,24 @@ def verification_display_name(
     if parts:
         return f"{parts[0][:1]}."
     return "Student"
+
+
+def _verification_url(qr_token: str) -> str:
+    return f"{settings.frontend_url}/verify/{qr_token}"
+
+
+def _qr_png_bytes(value: str) -> bytes:
+    qr = qrcode.QRCode(box_size=5, border=1)
+    qr.add_data(value)
+    qr.make(fit=True)
+    qr_buffer = io.BytesIO()
+    qr.make_image(fill_color="black", back_color="white").save(qr_buffer, format="PNG")
+    return qr_buffer.getvalue()
+
+
+def _qr_data_uri(value: str) -> str:
+    encoded_image = base64.b64encode(_qr_png_bytes(value)).decode("ascii")
+    return f"data:image/png;base64,{encoded_image}"
 
 
 def issue_certificate_for_application(
@@ -556,6 +575,7 @@ def get_public_verification(
             "completed_at": row.completed_at.isoformat() if row.completed_at else None,
         },
         "checked_at": datetime.now(UTC).isoformat(),
+        "qr_code_data_uri": _qr_data_uri(_verification_url(row.qr_token)),
         "disclaimer": "This is a ProjectProof verification record. It is not formal employment experience.",
     }
 
@@ -631,14 +651,8 @@ def generate_certificate_pdf(
     skills_str = ", ".join(skill_names) if skill_names else "General Software Development"
 
     # Generate QR Code image
-    verification_url = f"{settings.frontend_url}/verify/{row.qr_token}"
-    qr = qrcode.QRCode(box_size=5, border=1)
-    qr.add_data(verification_url)
-    qr.make(fit=True)
-    qr_img = qr.make_image(fill_color="black", back_color="white")
-    qr_buf = io.BytesIO()
-    qr_img.save(qr_buf, format="PNG")
-    qr_buf.seek(0)
+    verification_url = _verification_url(row.qr_token)
+    qr_buf = io.BytesIO(_qr_png_bytes(verification_url))
 
     # Draw PDF
     pdf_buf = io.BytesIO()
