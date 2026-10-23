@@ -307,7 +307,9 @@ def test_github_timeout_t_stu_05(client: TestClient):
         ("", False, "."),
     ],
 )
-def test_public_portfolio_applies_name_privacy(client, full_name, show_full, expected):
+def test_public_portfolio_applies_name_privacy(
+    client: TestClient, full_name: str, show_full: bool, expected: str
+) -> None:
     db = SessionLocal()
     original = None
     try:

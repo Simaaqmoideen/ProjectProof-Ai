@@ -123,11 +123,13 @@ async def upload_resume(
     file: UploadFile = File(...),
     user: User = Depends(require_roles("student")),
     db: Session = Depends(get_db),
-):
+) -> ResumeUploadResponse:
     """FR-STU-3: Resume upload (PDF, up to 5 MB)."""
     require_verified_email(user)
     content = await file.read(settings.max_resume_bytes + 1)
-    return files_service.upload_resume(db, user.id, file.filename or "", content)
+    return ResumeUploadResponse(
+        **files_service.upload_resume(db, user.id, file.filename or "", content)
+    )
 
 
 @router.get("/me/resume/text", response_model=ResumeTextResponse)

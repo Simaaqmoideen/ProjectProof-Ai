@@ -9,6 +9,7 @@ Privacy: reports show other students' work only to admins, never to companies or
 from __future__ import annotations
 
 import hashlib
+import keyword
 import re
 from typing import NamedTuple
 
@@ -59,11 +60,59 @@ class SimilarityResult(NamedTuple):
 
 # -- Normalisation ------------------------------------------------------------
 
-_KEYWORDS = {
-    "def", "class", "return", "if", "else", "elif", "for", "while", "import", "from",
-    "as", "try", "except", "finally", "with", "lambda", "const", "let", "var", "function",
-    "async", "await", "throw", "catch", "new", "this", "typeof", "instanceof", "in", "of",
-    "yield", "STR", "NUM",
+_KEYWORDS = {word.lower() for word in keyword.kwlist + keyword.softkwlist} | {
+    "as",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "from",
+    "function",
+    "get",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "instanceof",
+    "interface",
+    "let",
+    "new",
+    "null",
+    "of",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "set",
+    "static",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+    "str",
+    "num",
 }
 
 
@@ -81,12 +130,12 @@ def _normalise(source: str) -> str:
     source = re.sub(r"'[^']*'", ' STR ', source)
     # Replace numeric literals
     source = re.sub(r"\b\d+\.?\d*\b", ' NUM ', source)
-    # Tokenize punctuation separately to preserve syntactic structure
-    source = re.sub(r"([{}()\[\],;:+\-*/%=<>!&|^~])", r" \1 ", source)
+    # Tokenize every punctuation character separately to preserve syntax.
+    source = re.sub(r"([^\w\s])", r" \1 ", source)
     # Replace non-keyword identifiers with ID placeholder
     def _replace_id(match: re.Match) -> str:
         word = match.group(0)
-        return word if word in _KEYWORDS or word.lower() in _KEYWORDS else "ID"
+        return word if word.lower() in _KEYWORDS else "ID"
 
     source = re.sub(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b", _replace_id, source)
     # Collapse whitespace

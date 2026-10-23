@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pypdf import PdfReader
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.core.ids import generate_qr_token, generate_verification_id
 from app.core.rate_limit import reset_rate_limits
@@ -108,85 +109,6 @@ def _create_approved_certificate(client: TestClient, score: int = 85) -> tuple[d
     if "certificate_id" not in cert_info and "id" in cert_info:
         cert_info["certificate_id"] = cert_info["id"]
     return cert_info, {"application_id": app_id, "submission_id": sub_id, "project_id": pid}
-
-
-# ---------------------------------------------------------------------------
-# T-CRT-03: Force failure after XP insert -> whole transaction rolls back
-# ---------------------------------------------------------------------------
-def test_t_crt_03_transaction_rollback():
-    db = SessionLocal()
-    try:
-        # Create user and application directly
-        student_id = db.execute(text("SELECT user_id FROM student_profiles LIMIT 1")).scalar()
-        comp_id = db.execute(
-            text("SELECT id FROM companies WHERE status = 'approved' LIMIT 1")
-        ).scalar()
-        rev_id = db.execute(
-            text("SELECT user_id FROM company_members WHERE company_id = :cid LIMIT 1"),
-            {"cid": comp_id},
-        ).scalar()
-
-        proj_id = uuid.uuid4()
-        db.execute(
-            text("""
-            INSERT INTO projects (id, company_id, created_by, title, description, difficulty, duration_days, xp_max, max_selected, status)
-            VALUES (:id, :cid, :rev_id, 'Rollback Test Project', 'Test description', 'beginner', 7, 50, 1, 'open')
-        """),
-            {"id": proj_id, "cid": comp_id, "rev_id": rev_id},
-        )
-
-        app_id = uuid.uuid4()
-        db.execute(
-            text("""
-            INSERT INTO applications (id, project_id, student_id, status)
-            VALUES (:id, :pid, :sid, 'submitted')
-        """),
-            {"id": app_id, "pid": proj_id, "sid": student_id},
-        )
-        db.commit()
-
-        # Simulate exception during issuance
-        with pytest.raises(RuntimeError), db.begin_nested():
-            # Normal steps
-            db.execute(
-                text("UPDATE applications SET status = 'completed' WHERE id = :id"), {"id": app_id}
-            )
-            db.execute(
-                text("""
-                INSERT INTO certificates (id, application_id, verification_id, qr_token, status, xp_awarded, content_hash)
-                VALUES (:cid, :aid, 'EXP-2026-TEST-9999', 'test-qr-rollback', 'issued', 50, 'hash123')
-            """),
-                {"cid": uuid.uuid4(), "aid": app_id},
-            )
-            db.execute(
-                text("""
-                INSERT INTO xp_events (student_id, certificate_id, amount, reason)
-                VALUES (:sid, (SELECT id FROM certificates WHERE verification_id = 'EXP-2026-TEST-9999'), 50, 'project_completed')
-            """),
-                {"sid": student_id},
-            )
-            # Deliberate failure
-            raise RuntimeError("Simulated failure after XP event insert")
-
-        # Verify no partial records persisted
-        cert_count = db.execute(
-            text("SELECT count(*) FROM certificates WHERE verification_id = 'EXP-2026-TEST-9999'")
-        ).scalar()
-        xp_count = db.execute(
-            text(
-                "SELECT count(*) FROM xp_events WHERE reason = 'project_completed' AND student_id = :sid AND amount = 50"
-            ),
-            {"sid": student_id},
-        ).scalar()
-        app_status = db.execute(
-            text("SELECT status FROM applications WHERE id = :id"), {"id": app_id}
-        ).scalar()
-        assert cert_count == 0
-        assert xp_count == 0
-        assert app_status == "submitted"
-    finally:
-        db.rollback()
-        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -707,13 +629,13 @@ def test_t_rwd_04_05_badge_thresholds_and_revocation():
 # ---------------------------------------------------------------------------
 # T-CRT-03: Single transaction for certificate creation (rollback on failure)
 # ---------------------------------------------------------------------------
-def test_t_crt_03_atomic_transaction_rollback(monkeypatch):
+def test_t_crt_03_atomic_transaction_rollback(monkeypatch: pytest.MonkeyPatch) -> None:
     """AGENTS.md Rule 3: Single transaction for certificate creation. If a subsequent step fails, rolls back."""
     from app.services import certificate as cert_service
 
-    operation_certificate_ids = []
+    operation_certificate_ids: list[uuid.UUID] = []
 
-    def _exploding_badges(db, student_id):
+    def _exploding_badges(db: Session, student_id: uuid.UUID) -> list[str]:
         operation_certificate_ids.extend(
             db.execute(
                 text("SELECT id FROM certificates WHERE application_id = :aid"),

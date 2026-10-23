@@ -29,6 +29,7 @@ from app.ai.schemas import (
     SkillGapOutput,
 )
 from app.ai.similarity import (
+    _normalise,
     compare_submissions,
 )
 
@@ -96,6 +97,18 @@ def test_t_sim_01_independent_solutions():
     res = compare_submissions(files_a, files_b)
     assert res.score < 0.30
     assert res.label == "low"
+
+
+def test_t_sim_normalisation_preserves_language_keywords_and_punctuation() -> None:
+    normalized = _normalise(
+        "def compute(value):\n"
+        "    if value == 1: return value\n"
+        "class Result extends Base { return value?.count ?? 0; }"
+    )
+    tokens = normalized.split()
+
+    assert {"def", "if", "return", "class", "extends"}.issubset(tokens)
+    assert {"?", ".", "{", "}", ":", ";"}.issubset(tokens)
 
 
 # ── T-SIM-02: Starter template exclusion ─────────────────────────────────────
