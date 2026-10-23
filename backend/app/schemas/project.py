@@ -121,3 +121,7 @@ class ReportProjectRequest(BaseModel):
 
 ProjectReportRequest = ReportProjectRequest
 
+
+class ProjectReportResponse(BaseModel):
+    message: str
+    flag_id: str

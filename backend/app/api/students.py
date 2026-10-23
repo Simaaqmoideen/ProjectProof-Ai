@@ -4,7 +4,6 @@ Handles: profile, skills, visibility, resume, dashboard, portfolio, GitHub (FR-S
 Layers: HTTP only; all business logic delegated to services.
 """
 
-import time
 import uuid
 
 from fastapi import APIRouter, Depends, File, UploadFile, status
@@ -21,6 +20,8 @@ from app.schemas.student import (
     GitHubSummaryResponse,
     PortfolioItem,
     PortfolioResponse,
+    ResumeTextResponse,
+    ResumeUploadResponse,
     SkillResponse,
     SkillsUpdateRequest,
     StudentDashboardResponse,
@@ -28,6 +29,7 @@ from app.schemas.student import (
     StudentProfileUpdate,
     VisibilityUpdate,
 )
+from app.services import files as files_service
 from app.services import github as github_service
 from app.services import portfolio as portfolio_service
 
@@ -116,7 +118,7 @@ def update_visibility(
 # ─── Resume (FR-STU-3) ────────────────────────────────────────────────────────
 
 
-@router.post("/me/resume")
+@router.post("/me/resume", response_model=ResumeUploadResponse)
 async def upload_resume(
     file: UploadFile = File(...),
     user: User = Depends(require_roles("student")),
@@ -124,26 +126,18 @@ async def upload_resume(
 ):
     """FR-STU-3: Resume upload (PDF, up to 5 MB)."""
     require_verified_email(user)
-    profile = _require_student_profile(user, db)
+    content = await file.read(settings.max_resume_bytes + 1)
+    return files_service.upload_resume(db, user.id, file.filename or "", content)
 
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise BadRequestError("Only PDF files are accepted.")
 
-    content = await file.read()
-    if len(content) > settings.max_resume_bytes:
-        raise BadRequestError(
-            f"Resume must be <= {settings.max_resume_bytes // (1024 * 1024)} MB."
-        )
-
-    resume_key = f"resumes/{user.id}_{int(time.time())}.pdf"
-    profile.resume_file_key = resume_key
-    db.commit()
-
-    return {
-        "message": "Resume uploaded successfully.",
-        "resume_url": resume_key,
-        "resume_file_key": resume_key,
-    }
+@router.get("/me/resume/text", response_model=ResumeTextResponse)
+def get_my_resume_text(
+    user: User = Depends(require_roles("student")),
+    db: Session = Depends(get_db),
+) -> ResumeTextResponse:
+    """FR-STU-4: Extract text from the authenticated student's private stored PDF."""
+    require_verified_email(user)
+    return ResumeTextResponse(**files_service.extract_my_resume_text(db, user.id))
 
 
 # ─── Skills ──────────────────────────────────────────────────────────────────
@@ -198,7 +192,7 @@ def replace_my_skills(
             text("""
                 INSERT INTO student_skills (student_id, skill_id, proficiency, source)
                 VALUES (:uid, :sid, :prof, 'self')
-                ON CONFLICT (student_id, skill_id) DO UPDATE SET proficiency = :prof
+                ON CONFLICT (student_id, skill_id) DO UPDATE SET proficiency = EXCLUDED.proficiency
             """),
             {"uid": user.id, "sid": skill_id, "prof": proficiency},
         )
@@ -354,4 +348,3 @@ def get_public_portfolio(
         total=len(items),
         student_name=student_name,
     )
-

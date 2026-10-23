@@ -93,19 +93,8 @@ def chat(
         variables=variables,
         output_model=MentorChatOutput,
         input_text=message[:500],
+        application_id=application_id,
     )
-
-    log_id = res.get("ai", {}).get("log_id")
-    if log_id:
-        db.execute(
-            text("""
-                UPDATE ai_logs
-                   SET output = output || jsonb_build_object('application_id', CAST(:aid AS text))
-                 WHERE id = CAST(:lid AS bigint)
-            """),
-            {"aid": str(application_id), "lid": log_id},
-        )
-        db.commit()
 
     mentor_output: MentorChatOutput = res["result"]
     return {

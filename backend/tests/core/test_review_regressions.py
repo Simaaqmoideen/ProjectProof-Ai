@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+from collections.abc import Iterator
 from datetime import UTC, datetime
+from types import ModuleType
 
 import pytest
 
@@ -13,13 +15,15 @@ from app.services.certificate import verification_display_name
 
 
 @pytest.fixture
-def limiter():
+def limiter() -> Iterator[ModuleType]:
     rate_limit.reset_rate_limits()
     yield rate_limit
     rate_limit.reset_rate_limits()
 
 
-def test_cleanup_preserves_long_window(limiter, monkeypatch):
+def test_cleanup_preserves_long_window(
+    limiter: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(limiter.time, "time", lambda: 1_000.0)
     limiter.check_rate_limit("long", max_requests=1, window_seconds=3600)
     for i in range(101):
@@ -31,7 +35,9 @@ def test_cleanup_preserves_long_window(limiter, monkeypatch):
     assert "short-0" not in limiter._request_timestamps
 
 
-def test_cleanup_runs_at_most_once_a_minute(limiter, monkeypatch):
+def test_cleanup_runs_at_most_once_a_minute(
+    limiter: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(limiter.time, "time", lambda: 1_000.0)
     limiter.check_rate_limit("expired", window_seconds=1)
     monkeypatch.setattr(limiter.time, "time", lambda: 1_059.0)
@@ -52,7 +58,7 @@ def test_cleanup_runs_at_most_once_a_minute(limiter, monkeypatch):
         datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC),
     ],
 )
-def test_certificate_hash_normalizes_timestamp(timestamp):
+def test_certificate_hash_normalizes_timestamp(timestamp: str | datetime) -> None:
     args = {
         "student_id": "student",
         "project_id": "project",
@@ -65,7 +71,7 @@ def test_certificate_hash_normalizes_timestamp(timestamp):
     )
 
 
-def test_certificate_hash_preserves_unparseable_timestamp():
+def test_certificate_hash_preserves_unparseable_timestamp() -> None:
     canonical = {
         "student_id": "student",
         "project_id": "project",
@@ -91,5 +97,7 @@ def test_certificate_hash_preserves_unparseable_timestamp():
         ("", False, True, "."),
     ],
 )
-def test_verification_display_name(name, show_full, first_only, expected):
+def test_verification_display_name(
+    name: str, show_full: bool, first_only: bool, expected: str
+) -> None:
     assert verification_display_name(name, show_full, first_initial_only=first_only) == expected

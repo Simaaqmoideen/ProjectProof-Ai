@@ -210,7 +210,9 @@ test.describe('Scenario 3 – Mobile/Accessibility: 360 px viewport and keyboard
       const labelledBy = await btn.getAttribute('aria-labelledby');
       let labelledByText = '';
       if (labelledBy) {
-        labelledByText = (await page.locator(`#${labelledBy}`).textContent())?.trim() ?? '';
+        labelledByText = (await Promise.all(
+          labelledBy.split(/\s+/).map((id) => page.locator(`#${id}`).textContent())
+        )).filter(Boolean).join(' ').trim();
       }
       const label = ariaLabel || labelledByText || textContent || title || '';
       expect(label.trim().length, `Button has no accessible label: ${await btn.innerHTML()}`).toBeGreaterThan(0);

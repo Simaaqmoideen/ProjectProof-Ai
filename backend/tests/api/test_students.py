@@ -299,23 +299,33 @@ def test_github_timeout_t_stu_05(client: TestClient):
     assert prof.status_code == 200
 
 
-@pytest.mark.parametrize(("full_name", "show_full", "expected"), [
-    ("Ananya Rao", True, "Ananya Rao"), ("Ananya Rao", False, "A."), ("", False, "."),
-])
+@pytest.mark.parametrize(
+    ("full_name", "show_full", "expected"),
+    [
+        ("Ananya Rao", True, "Ananya Rao"),
+        ("Ananya Rao", False, "A."),
+        ("", False, "."),
+    ],
+)
 def test_public_portfolio_applies_name_privacy(client, full_name, show_full, expected):
     db = SessionLocal()
     original = None
     try:
-        original = db.execute(text("""
+        original = db.execute(
+            text("""
             SELECT sp.user_id, sp.full_name, sp.show_full_name_on_verification, sp.is_public
               FROM student_profiles sp JOIN users u ON u.id = sp.user_id
              WHERE u.email = 'ananya@example.com'
-        """)).one()
-        db.execute(text("""
+        """)
+        ).one()
+        db.execute(
+            text("""
             UPDATE student_profiles
                SET full_name = :name, show_full_name_on_verification = :show_full, is_public = TRUE
              WHERE user_id = :uid
-        """), {"name": full_name, "show_full": show_full, "uid": original.user_id})
+        """),
+            {"name": full_name, "show_full": show_full, "uid": original.user_id},
+        )
         db.commit()
         response = client.get(f"/api/v1/students/{original.user_id}/portfolio")
         assert response.status_code == 200, response.text
@@ -324,12 +334,19 @@ def test_public_portfolio_applies_name_privacy(client, full_name, show_full, exp
         db.rollback()
         try:
             if original:
-                db.execute(text("""
+                db.execute(
+                    text("""
                     UPDATE student_profiles SET full_name = :name,
                         show_full_name_on_verification = :show_full, is_public = :is_public
                      WHERE user_id = :uid
-                """), {"name": original.full_name, "show_full": original.show_full_name_on_verification,
-                         "is_public": original.is_public, "uid": original.user_id})
+                """),
+                    {
+                        "name": original.full_name,
+                        "show_full": original.show_full_name_on_verification,
+                        "is_public": original.is_public,
+                        "uid": original.user_id,
+                    },
+                )
                 db.commit()
         finally:
             db.close()

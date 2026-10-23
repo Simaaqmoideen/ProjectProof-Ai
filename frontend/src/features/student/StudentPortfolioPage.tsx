@@ -58,6 +58,7 @@ interface PortfolioItem {
 interface PortfolioResponse {
   items: PortfolioItem[];
   total: number;
+  student_name?: string | null;
 }
 
 interface StudentProfile {
@@ -360,12 +361,16 @@ export const StudentPortfolioPage: React.FC = () => {
 
   const [items, setItems] = useState<PortfolioItem[]>([]);
   const [profile, setProfile] = useState<StudentProfile | null>(null);
+  const [publicStudentName, setPublicStudentName] = useState<string | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bulletModalItem, setBulletModalItem] = useState<PortfolioItem | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
     (async () => {
       try {
         const promises: Promise<any>[] = [
@@ -376,19 +381,23 @@ export const StudentPortfolioPage: React.FC = () => {
 
         const [portfolioRes, profileRes, dashRes] = await Promise.all(promises);
 
+        if (cancelled) return;
         setItems(portfolioRes.items ?? []);
+        setPublicStudentName(portfolioRes.student_name ?? null);
         if (profileRes) setProfile(profileRes);
         if (dashRes) setStats(dashRes);
       } catch (e) {
+        if (cancelled) return;
         if (e instanceof ApiException) {
           setError(e.status === 404 ? 'Portfolio not found or profile is private.' : e.message);
         } else {
           setError('Failed to load portfolio.');
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true; };
   }, [portfolioEndpoint, profileEndpoint, dashboardEndpoint]);
 
   if (loading) {
@@ -409,11 +418,12 @@ export const StudentPortfolioPage: React.FC = () => {
   }
 
   // Name display per FR-STU-6
-  const rawName = profile?.full_name ?? 'Student';
-  const displayName =
-    profile?.show_full_name_on_verification !== false
+  const rawName = profile?.full_name ?? publicStudentName ?? 'Student';
+  const displayName = profile
+    ? profile.show_full_name_on_verification !== false
       ? rawName
-      : `${rawName[0] ?? '?'}.`;
+      : `${rawName[0] ?? '?'}.`
+    : publicStudentName ?? 'Student';
 
   const verified = items.filter((i) => i.status === 'issued');
   const revoked = items.filter((i) => i.status === 'revoked');

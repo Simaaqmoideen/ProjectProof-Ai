@@ -187,7 +187,6 @@ export const StudentProfilePage: React.FC = () => {
   const resumeRef = useRef<HTMLInputElement>(null);
   const [resumeUploading, setResumeUploading] = useState(false);
   const [resumeUrl, setResumeUrl] = useState<string | null>(null);
-  const [resumeText, setResumeText] = useState<string>('');
 
   // AI resume analysis
   const [aiResumeLoading, setAiResumeLoading] = useState(false);
@@ -212,7 +211,7 @@ export const StudentProfilePage: React.FC = () => {
       try {
         const [data, skillsData] = await Promise.all([
           apiRequest<StudentProfile>('/students/me'),
-          apiRequest<Skill[]>('/students/me/skills').catch(() => []),
+          apiRequest<Skill[]>('/students/me/skills'),
         ]);
         setProfile(data);
         setFullName(data.full_name ?? '');
@@ -345,19 +344,6 @@ export const StudentProfilePage: React.FC = () => {
       });
       setResumeUrl(res.resume_url ?? res.resume_file_key ?? null);
 
-      // Extract text from uploaded resume for AI analysis (FR-STU-4)
-      try {
-        const raw = await file.text();
-        const matches = raw.match(/[A-Za-z0-9,.:;'\-\s]{3,}/g);
-        const textContent = matches ? matches.join(' ').replace(/\s+/g, ' ').trim() : '';
-        if (textContent.length >= 10) {
-          setResumeText(textContent);
-        } else {
-          setResumeText(`Resume for ${file.name}`);
-        }
-      } catch {
-        setResumeText(`Resume for ${file.name}`);
-      }
 
       setSuccessMsg('Resume uploaded.');
     } catch (e) {
@@ -376,10 +362,12 @@ export const StudentProfilePage: React.FC = () => {
     setError(null);
     setAiResumeDraft(null);
     try {
-      const textToSend =
-        resumeText && resumeText.trim().length >= 10
-          ? resumeText.trim()
-          : (profile?.full_name ? `Resume for ${profile.full_name}. Developer with technical skills.` : 'Software developer resume with technical skills.');
+      const extracted = await apiRequest<{ text: string }>('/students/me/resume/text');
+      const textToSend = extracted.text.trim();
+      if (textToSend.length < 10) {
+        setError('No readable text was found in this PDF. Upload a text-based PDF and try again.');
+        return;
+      }
       const res = await apiRequest<{ ai: any; result: any }>('/ai/resume/analyze', {
         method: 'POST',
         body: JSON.stringify({ resume_text: textToSend }),
@@ -420,11 +408,11 @@ export const StudentProfilePage: React.FC = () => {
       const accepted = aiResumeDraft.skills
         .filter((s) => s.accepted)
         .map((s) => ({ name: s.name, proficiency: s.proficiency, source: s.source }));
-      const res = await apiRequest<{ skills: Skill[] }>('/ai/resume/accept', {
+      await apiRequest<{ saved: number }>('/ai/resume/accept', {
         method: 'POST',
         body: JSON.stringify({ log_id: aiResumeDraft.log_id, accepted_skills: accepted }),
       });
-      setSkills(res.skills ?? skills);
+      setSkills(await apiRequest<Skill[]>('/students/me/skills'));
       setAiResumeDraft(null);
       setSuccessMsg('Skills from resume saved.');
     } catch (e) {
@@ -458,8 +446,8 @@ export const StudentProfilePage: React.FC = () => {
     setGithubError(null);
     try {
       const res = await apiRequest<any>('/students/me/github', {
-        method: 'POST',
-        body: JSON.stringify({ github_username: githubUsername.trim() }),
+        method: 'PUT',
+        body: JSON.stringify({ username: githubUsername.trim() }),
       });
       setGithubData(res);
       setSuccessMsg('GitHub linked. Self-linked, not verified.');
@@ -516,11 +504,11 @@ export const StudentProfilePage: React.FC = () => {
       const accepted = aiGithubDraft.skills
         .filter((s) => s.accepted)
         .map((s) => ({ name: s.name, proficiency: s.proficiency, source: s.source }));
-      const res = await apiRequest<{ skills: Skill[] }>('/ai/github/accept', {
+      await apiRequest<{ saved: number }>('/ai/github/accept', {
         method: 'POST',
         body: JSON.stringify({ log_id: aiGithubDraft.log_id, accepted_skills: accepted }),
       });
-      setSkills(res.skills ?? skills);
+      setSkills(await apiRequest<Skill[]>('/students/me/skills'));
       setAiGithubDraft(null);
       setSuccessMsg('Skills from GitHub saved. Note: GitHub data is self-linked, not verified.');
     } catch (e) {

@@ -67,10 +67,12 @@ Password rules: at least 10 characters, checked against a list of common passwor
 | `GET /students/me/skills` | student | Own skills |
 | `PUT /students/me/skills` | student | Replace skills list `[{ "skill": "Python", "proficiency": 4 }]` |
 | `POST /students/me/resume` | student | Upload PDF (multipart) |
+| `GET /students/me/resume/text` | student | Extract bounded text from the authenticated student's stored PDF for resume analysis |
 | `DELETE /students/me/resume` | student | Remove file and parsed data |
 | `GET /students/me/dashboard` | student | Next action, active projects, XP, level, badges, stats |
 | `GET /students/me/certificates` | student | Own certificates |
 | `GET /students/me/portfolio` | student | Verified project history from `v_student_portfolio` (FR-STU-10), issued and revoked |
+| `GET /students/{student_id}/portfolio` | public | Public portfolio only; returns 404 when the profile is private or unavailable |
 | `PUT /students/me/github` | student | `{ "username": "octocat" }`; reads the public profile and repositories through GitHub's public API; stores nothing but the username until an analysis is accepted (FR-STU-8) |
 | `GET /students/me/github` | student | Languages, repository count, recent activity; labelled "self-linked, not verified" |
 | `DELETE /students/me/github` | student | Unlink and delete the stored GitHub summary |

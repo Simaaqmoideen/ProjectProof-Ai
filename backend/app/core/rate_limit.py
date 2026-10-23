@@ -8,6 +8,7 @@ from threading import Lock
 
 from fastapi import Request
 
+from app.config import settings
 from app.core.errors import RateLimitedError
 
 _request_timestamps: dict[str, list[float]] = defaultdict(list)
@@ -16,7 +17,9 @@ _key_expiries: dict[str, float] = {}
 _last_cleanup = 0.0
 
 
-TRUSTED_PROXIES = {"127.0.0.1", "::1", "localhost", "testclient"}
+TRUSTED_PROXIES = {
+    value.strip() for value in settings.trusted_proxy_ips.split(",") if value.strip()
+}
 
 
 def parse_rate_limit(rate_str: str) -> tuple[int, float]:
@@ -61,6 +64,8 @@ def check_rate_limit(
         if len(valid) >= max_requests:
             _request_timestamps[key] = valid
             raise RateLimitedError("Rate limit exceeded. Please try again later.")
+        if not valid:
+            _request_timestamps.pop(key, None)
         valid.append(now)
         _request_timestamps[key] = valid
 
@@ -69,11 +74,15 @@ def check_rate_limit(
 
 def get_client_ip(request: Request) -> str:
     """Extract client IP from X-Forwarded-For if behind trusted proxy, else direct client."""
-    client_host = request.client.host if request.client else "127.0.0.1"
+    client_host = request.client.host if request.client else ""
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded and client_host in TRUSTED_PROXIES:
-        return forwarded.split(",")[0].strip()
-    return client_host
+        chain = [part.strip() for part in forwarded.split(",") if part.strip()]
+        for address in reversed([*chain, client_host]):
+            if address not in TRUSTED_PROXIES:
+                return address
+        return chain[0] if chain else client_host
+    return client_host or "unknown"
 
 
 def reset_rate_limits() -> None:

@@ -42,6 +42,16 @@ class StudentProfileResponse(BaseModel):
         return self
 
 
+class ResumeUploadResponse(BaseModel):
+    message: str
+    resume_url: str
+    resume_file_key: str
+
+
+class ResumeTextResponse(BaseModel):
+    text: str
+
+
 class VisibilityUpdate(BaseModel):
     is_public: bool
     show_full_name_on_verification: bool | None = None

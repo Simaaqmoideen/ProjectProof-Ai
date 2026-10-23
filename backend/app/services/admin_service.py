@@ -6,10 +6,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.errors import BadRequestError, NotFoundError
+from app.core.errors import BadRequestError, ConflictError, NotFoundError
 from app.models.user import Company, RecruiterProfile, User
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.company_repo import CompanyRepository
+from app.repositories.flag_repo import FlagRepository
 from app.repositories.recruiter_repo import RecruiterRepository
 from app.repositories.token_repo import TokenRepository
 from app.repositories.user_repo import UserRepository
@@ -132,7 +133,6 @@ class AdminService:
 
         # FR-ORG-7 & T-ORG-07: Suspending a company closes its open projects. Existing certificates stay valid.
         # Close open projects in projects table if any exist
-        from sqlalchemy import text
 
         db.execute(
             text(
@@ -345,14 +345,12 @@ class AdminService:
         allowed = {"dismissed", "confirmed"}
         if status not in allowed:
             raise BadRequestError(f"status must be one of {allowed}")
-        res = db.execute(
-            text(
-                "UPDATE flags SET status = CAST(:s AS flag_status), reviewed_by = :admin, reviewed_at = now() WHERE id = :fid"
-            ),
-            {"s": status, "admin": admin.id, "fid": flag_id},
-        )
+        res = FlagRepository.resolve_open(db, flag_id, admin.id, status)
         if res.rowcount == 0:
-            raise NotFoundError("Flag not found.")
+            existing_status = FlagRepository.get_status(db, flag_id)
+            if existing_status is None:
+                raise NotFoundError("Flag not found.")
+            raise ConflictError("Flag is already resolved.")
         AuditService.log(
             db=db,
             action="flag_resolved",

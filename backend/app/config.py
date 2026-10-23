@@ -29,7 +29,9 @@ class Settings(BaseSettings):
     )
     email_verification_token_hours: int = Field(
         default=24,
-        validation_alias=AliasChoices("EMAIL_VERIFICATION_TOKEN_HOURS", "email_verification_token_hours"),
+        validation_alias=AliasChoices(
+            "EMAIL_VERIFICATION_TOKEN_HOURS", "email_verification_token_hours"
+        ),
     )
     password_reset_token_hours: int = Field(
         default=1,
@@ -43,6 +45,10 @@ class Settings(BaseSettings):
         default="http://localhost:5173",
         validation_alias=AliasChoices("FRONTEND_URL", "frontend_url"),
     )
+    trusted_proxy_ips: str = Field(
+        default="127.0.0.1,::1",
+        validation_alias=AliasChoices("TRUSTED_PROXY_IPS", "trusted_proxy_ips"),
+    )
 
     # Rate limiting defaults
     login_rate_limit: str = Field(
@@ -51,7 +57,9 @@ class Settings(BaseSettings):
     )
     public_verification_rate_limit: str = Field(
         default="30/minute",
-        validation_alias=AliasChoices("PUBLIC_VERIFICATION_RATE_LIMIT", "public_verification_rate_limit"),
+        validation_alias=AliasChoices(
+            "PUBLIC_VERIFICATION_RATE_LIMIT", "public_verification_rate_limit"
+        ),
     )
 
     # BR-1 XP formula constants
@@ -97,23 +105,33 @@ class Settings(BaseSettings):
     )
     trust_score_overturned_penalty: int = Field(
         default=10,
-        validation_alias=AliasChoices("TRUST_SCORE_OVERTURNED_PENALTY", "trust_score_overturned_penalty"),
+        validation_alias=AliasChoices(
+            "TRUST_SCORE_OVERTURNED_PENALTY", "trust_score_overturned_penalty"
+        ),
     )
     trust_score_revocation_penalty: int = Field(
         default=20,
-        validation_alias=AliasChoices("TRUST_SCORE_REVOCATION_PENALTY", "trust_score_revocation_penalty"),
+        validation_alias=AliasChoices(
+            "TRUST_SCORE_REVOCATION_PENALTY", "trust_score_revocation_penalty"
+        ),
     )
     trust_score_five_projects_bonus: int = Field(
         default=10,
-        validation_alias=AliasChoices("TRUST_SCORE_FIVE_PROJECTS_BONUS", "trust_score_five_projects_bonus"),
+        validation_alias=AliasChoices(
+            "TRUST_SCORE_FIVE_PROJECTS_BONUS", "trust_score_five_projects_bonus"
+        ),
     )
     trust_score_removed_project_penalty: int = Field(
         default=15,
-        validation_alias=AliasChoices("TRUST_SCORE_REMOVED_PROJECT_PENALTY", "trust_score_removed_project_penalty"),
+        validation_alias=AliasChoices(
+            "TRUST_SCORE_REMOVED_PROJECT_PENALTY", "trust_score_removed_project_penalty"
+        ),
     )
     trust_score_publish_threshold: int = Field(
         default=30,
-        validation_alias=AliasChoices("TRUST_SCORE_PUBLISH_THRESHOLD", "trust_score_publish_threshold"),
+        validation_alias=AliasChoices(
+            "TRUST_SCORE_PUBLISH_THRESHOLD", "trust_score_publish_threshold"
+        ),
     )
 
     # BR-10 Recommendation bonuses
@@ -149,7 +167,9 @@ class Settings(BaseSettings):
     )
     new_company_evaluations_needed: int = Field(
         default=3,
-        validation_alias=AliasChoices("NEW_COMPANY_EVALUATIONS_NEEDED", "new_company_evaluations_needed"),
+        validation_alias=AliasChoices(
+            "NEW_COMPANY_EVALUATIONS_NEEDED", "new_company_evaluations_needed"
+        ),
     )
 
     # Upload limits

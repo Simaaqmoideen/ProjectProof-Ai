@@ -418,7 +418,7 @@ def get_mentor_usage_summary(
                 SELECT count(*) FROM ai_logs
                  WHERE feature = 'mentor'
                    AND user_id = :uid
-                   AND (output->>'application_id' = :aid OR output->>'_application_id' = :aid)
+                   AND application_id = CAST(:aid AS uuid)
             """),
             {"uid": application.student_id, "aid": str(application_id)},
         ).scalar()

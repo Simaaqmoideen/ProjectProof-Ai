@@ -710,13 +710,14 @@ export const WorkspacePage: React.FC = () => {
               {/* Milestone selector */}
               {workspace.milestones.length > 0 && (
                 <div className="mb-2">
-                  <label className="block font-mono text-[10px] uppercase tracking-wider mb-1" style={{ color: '#8f8f8f' }}>
+                  <label htmlFor="mentor-milestone" className="block font-mono text-[10px] uppercase tracking-wider mb-1" style={{ color: '#8f8f8f' }}>
                     Context Milestone
                   </label>
                   <select
+                    id="mentor-milestone"
                     value={mentorMid}
                     onChange={e => setMentorMid(e.target.value)}
-                    className="w-full text-xs px-2.5 py-1.5 rounded-[6px] outline-none"
+                    className="w-full text-xs px-2.5 py-1.5 rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-[#171717]"
                     style={{ border: '1px solid #ebebeb', background: '#fafafa', color: '#171717' }}
                   >
                     {workspace.milestones.map((m, idx) => (
@@ -765,11 +766,12 @@ export const WorkspacePage: React.FC = () => {
               {/* Question input */}
               <div className="space-y-2">
                 <textarea
+                  aria-label="Question for AI Mentor"
                   rows={2}
                   value={mentorMsg}
                   onChange={e => setMentorMsg(e.target.value)}
                   placeholder="Ask about design, architecture, or edge cases…"
-                  className="w-full text-xs px-2.5 py-1.5 rounded-[6px] outline-none resize-none"
+                  className="w-full text-xs px-2.5 py-1.5 rounded-[6px] outline-none resize-none focus-visible:ring-2 focus-visible:ring-[#171717]"
                   style={{ border: '1px solid #ebebeb', background: '#fafafa', color: '#171717' }}
                 />
                 {mentorErr && (

@@ -27,6 +27,7 @@ from app.schemas.project import (
     ProjectCompanyInfo,
     ProjectCreateRequest,
     ProjectReportRequest,
+    ProjectReportResponse,
     ProjectResponse,
     ProjectUpdateRequest,
     TaskResponse,
@@ -375,7 +376,11 @@ def get_project(
 # ─── Project report (FR-ADM-9) ───────────────────────────────────────────────
 
 
-@router.post("/projects/{project_id}/report", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/projects/{project_id}/report",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ProjectReportResponse,
+)
 def report_project(
     project_id: uuid.UUID,
     data: ProjectReportRequest,

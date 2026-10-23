@@ -14,6 +14,7 @@ from app.config import settings
 from app.core.errors import BadRequestError, ForbiddenError, NotFoundError, ValidationError
 from app.models.project import Project
 from app.models.user import Company
+from app.repositories.flag_repo import FlagRepository
 from app.repositories.project_repo import ProjectRepository
 from app.services.audit_service import AuditService
 
@@ -292,16 +293,6 @@ class ProjectService:
                 "reported_by": str(reporter_id),
             }
         )
-        db.execute(
-            text("""
-                INSERT INTO flags (id, kind, entity_type, entity_id, details, status, created_at)
-                VALUES (:id, 'manual', 'project', :entity_id, CAST(:details AS jsonb), 'open', now())
-            """),
-            {
-                "id": flag_id,
-                "entity_id": project_id,
-                "details": details_json,
-            },
-        )
+        FlagRepository.create_project_report(db, flag_id, project_id, details_json)
         db.commit()
         return {"message": "Report submitted. An admin will review it.", "flag_id": str(flag_id)}

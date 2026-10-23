@@ -72,7 +72,9 @@ def explain_applicants(
             continue
 
         seen_ids.add(aid)
-        strengths = _verify_sentence(expl.strengths, app_facts, is_gaps=False, all_skills=all_skills)
+        strengths = _verify_sentence(
+            expl.strengths, app_facts, is_gaps=False, all_skills=all_skills
+        )
         gaps = _verify_sentence(expl.gaps, app_facts, is_gaps=True, all_skills=all_skills)
         if strengths == expl.strengths.strip() and gaps == expl.gaps.strip():
             passed += 1
@@ -122,7 +124,9 @@ def _verify_sentence(
     if not sentence or not sentence.strip():
         return fallback
 
-    fact_skills = {s.lower() for s in (facts.get("matched_skills", []) + facts.get("missing_skills", []))}
+    fact_skills = {
+        s.lower() for s in (facts.get("matched_skills", []) + facts.get("missing_skills", []))
+    }
     sentence_lower = sentence.lower()
 
     # Reject if sentence mentions any technology/skill not in the applicant's facts
@@ -130,13 +134,15 @@ def _verify_sentence(
         for sk in all_skills:
             if (
                 len(sk) > 2
-                and re.search(rf"\b{re.escape(sk)}\b", sentence_lower)
+                and re.search(rf"(?<!\w){re.escape(sk)}(?!\w)", sentence_lower)
                 and sk not in fact_skills
             ):
                 return fallback
 
     # Sentence must reference at least one fact skill
-    has_fact_skill = any(re.search(rf"\b{re.escape(fs)}\b", sentence_lower) for fs in fact_skills if fs)
+    has_fact_skill = any(
+        re.search(rf"(?<!\w){re.escape(fs)}(?!\w)", sentence_lower) for fs in fact_skills if fs
+    )
     if has_fact_skill:
         return sentence.strip()
 

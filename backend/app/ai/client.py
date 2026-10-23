@@ -249,22 +249,6 @@ def recompute_confidence(
 # ── Quota check ───────────────────────────────────────────────────────────────
 
 
-def _check_quota(db: Session, user_id: uuid.UUID) -> None:
-    """Raise LLMError(429) if the user has exceeded their daily AI quota."""
-    row = db.execute(
-        text("""
-            SELECT COUNT(*) FROM ai_logs
-             WHERE user_id = :uid
-               AND created_at >= NOW() - INTERVAL '24 hours'
-        """),
-        {"uid": user_id},
-    ).scalar()
-    if (row or 0) >= settings.llm_daily_limit_per_user:
-        raise LLMError(
-            "quota_exceeded", "Daily AI usage limit reached. Try again tomorrow.", status_code=429
-        )
-
-
 # ── ai_logs write ─────────────────────────────────────────────────────────────
 
 
@@ -277,6 +261,7 @@ def _write_log(
     output: dict,
     confidence: str,
     latency_ms: int,
+    application_id: uuid.UUID | None = None,
 ) -> str:
     """Insert an ai_logs row and return its bigint ID as a string.
     Never logs raw personal text (AGENTS.md rule 9).
@@ -284,15 +269,16 @@ def _write_log(
     row = db.execute(
         text("""
             INSERT INTO ai_logs
-                (user_id, feature, prompt_version, model, input_ref,
+                (user_id, application_id, feature, prompt_version, model, input_ref,
                  output, confidence, latency_ms, created_at)
             VALUES
-                (:uid, :feature, :pv, :model, :input_ref,
+                (:uid, :application_id, :feature, :pv, :model, :input_ref,
                  CAST(:output AS jsonb), CAST(:conf AS ai_confidence), :lat, NOW())
             RETURNING id
         """),
         {
             "uid": user_id,
+            "application_id": application_id,
             "feature": feature,
             "pv": prompt_version,
             "model": f"{settings.llm_provider}:{settings.llm_model}",
@@ -303,6 +289,69 @@ def _write_log(
         },
     ).fetchone()
     return str(row[0]) if row else "0"
+
+
+def _reserve_attempt(
+    db: Session,
+    user_id: uuid.UUID,
+    feature: str,
+    prompt_version: str,
+    input_ref: str,
+    application_id: uuid.UUID | None,
+) -> str:
+    """Atomically reserve one quota unit before making a provider call."""
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(CAST(:uid AS text), 0))"),
+        {"uid": user_id},
+    )
+    used = (
+        db.execute(
+            text("""
+            SELECT COUNT(*) FROM ai_logs
+             WHERE user_id = :uid AND created_at >= NOW() - INTERVAL '24 hours'
+        """),
+            {"uid": user_id},
+        ).scalar()
+        or 0
+    )
+    if used >= settings.llm_daily_limit_per_user:
+        db.rollback()
+        raise LLMError(
+            "quota_exceeded", "Daily AI usage limit reached. Try again tomorrow.", status_code=429
+        )
+    log_id = _write_log(
+        db,
+        user_id=user_id,
+        feature=feature,
+        prompt_version=prompt_version,
+        input_ref=input_ref,
+        output={"status": "provider_attempt"},
+        confidence="low",
+        latency_ms=0,
+        application_id=application_id,
+    )
+    db.commit()
+    return log_id
+
+
+def _finish_attempt(
+    db: Session, log_id: str, output: dict, confidence: str, latency_ms: int
+) -> None:
+    db.execute(
+        text("""
+            UPDATE ai_logs
+               SET output = CAST(:output AS jsonb),
+                   confidence = CAST(:confidence AS ai_confidence), latency_ms = :latency
+             WHERE id = CAST(:log_id AS bigint)
+        """),
+        {
+            "output": json.dumps(output),
+            "confidence": confidence,
+            "latency": latency_ms,
+            "log_id": log_id,
+        },
+    )
+    db.commit()
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
@@ -318,6 +367,7 @@ def run(
     output_model: type[T],
     input_text: str = "",
     check_pass_rate: float = 1.0,
+    application_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
     """Call the LLM, validate output, log, return {ai: AIMeta, result: T}.
 
@@ -325,35 +375,45 @@ def run(
     """
     from app.ai.schemas import AIMeta
 
-    _check_quota(db, user_id)
-
     prompt = _load_prompt(feature, prompt_version, variables)
     client = _get_llm_client()
-
+    input_ref = hashlib.sha256(input_text.encode()).hexdigest()[:16] if input_text else "n/a"
+    attempt_id = _reserve_attempt(db, user_id, feature, prompt_version, input_ref, application_id)
     needed_retry = False
     start = time.monotonic()
-    raw = client.call(feature, prompt)
+    try:
+        raw = client.call(feature, prompt)
+    except LLMError as exc:
+        _finish_attempt(
+            db, attempt_id, {"error": exc.code}, "low", int((time.monotonic() - start) * 1000)
+        )
+        raise
+    except Exception as exc:
+        _finish_attempt(
+            db,
+            attempt_id,
+            {"error": "provider_error"},
+            "low",
+            int((time.monotonic() - start) * 1000),
+        )
+        raise LLMError("provider_error", "AI provider request failed.", status_code=503) from exc
 
     try:
         parsed = json.loads(raw)
         result = output_model.model_validate(parsed)
-    except Exception as exc1:
+    except Exception:
         # Record attempt 1 failure in ai_logs so every provider call consumes quota
         input_ref = hashlib.sha256(input_text.encode()).hexdigest()[:16] if input_text else "n/a"
-        _write_log(
+        _finish_attempt(
             db,
-            user_id=user_id,
-            feature=feature,
-            prompt_version=prompt_version,
-            input_ref=input_ref,
-            output={"error": "validation_failed", "detail": str(exc1)},
-            confidence="low",
-            latency_ms=int((time.monotonic() - start) * 1000),
+            attempt_id,
+            {"error": "validation_failed"},
+            "low",
+            int((time.monotonic() - start) * 1000),
         )
-        db.commit()
-
-        # Check quota before repair attempt
-        _check_quota(db, user_id)
+        repair_attempt_id = _reserve_attempt(
+            db, user_id, feature, prompt_version, input_ref, application_id
+        )
 
         # One repair retry
         repair_prompt = (
@@ -366,20 +426,24 @@ def run(
             parsed = json.loads(raw)
             result = output_model.model_validate(parsed)
             needed_retry = True
-        except LLMError:
+            attempt_id = repair_attempt_id
+        except LLMError as exc:
+            _finish_attempt(
+                db,
+                repair_attempt_id,
+                {"error": exc.code},
+                "low",
+                int((time.monotonic() - start) * 1000),
+            )
             raise
         except Exception as exc:
-            _write_log(
+            _finish_attempt(
                 db,
-                user_id=user_id,
-                feature=feature,
-                prompt_version=prompt_version,
-                input_ref=input_ref,
-                output={"error": "repair_failed", "detail": str(exc)},
-                confidence="low",
-                latency_ms=int((time.monotonic() - start) * 1000),
+                repair_attempt_id,
+                {"error": "repair_failed"},
+                "low",
+                int((time.monotonic() - start) * 1000),
             )
-            db.commit()
             raise LLMError(
                 "ai_output_invalid", f"AI output could not be validated: {exc}", status_code=422
             ) from exc
@@ -388,21 +452,9 @@ def run(
     confidence = _compute_confidence(input_text, needed_retry, check_pass_rate)
 
     # input_ref = SHA-256 of the raw input text (never the text itself)
-    input_ref = hashlib.sha256(input_text.encode()).hexdigest()[:16] if input_text else "n/a"
-
-    log_id = _write_log(
-        db,
-        user_id=user_id,
-        feature=feature,
-        prompt_version=prompt_version,
-        input_ref=input_ref,
-        output=result.model_dump(),
-        confidence=confidence,
-        latency_ms=latency_ms,
-    )
-    db.commit()  # commit the ai_logs row so it persists for subsequent accept/feedback routes
+    _finish_attempt(db, attempt_id, result.model_dump(), confidence, latency_ms)
 
     return {
-        "ai": AIMeta(label="AI draft", confidence=confidence, log_id=log_id).model_dump(),
+        "ai": AIMeta(label="AI draft", confidence=confidence, log_id=attempt_id).model_dump(),
         "result": result,
     }
