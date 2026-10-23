@@ -9,6 +9,11 @@ dependencies = [
 ]
 [project.optional-dependencies]
 dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
 [tool.ruff]
 line-length = 100
 
