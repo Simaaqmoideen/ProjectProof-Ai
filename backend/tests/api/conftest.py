@@ -9,10 +9,12 @@ This fixture ensures seed company/user state is clean before each test.
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.rate_limit import reset_rate_limits
 from app.db import SessionLocal
 from app.main import app
 from app.models.project import Project
 from app.models.user import Company, CompanyMember, User
+from app.services.auth_service import FAILED_ATTEMPTS
 
 
 def _ensure_seed_companies_active(db) -> None:
@@ -89,6 +91,8 @@ def client() -> TestClient:
 @pytest.fixture(autouse=True)
 def restore_seed_accounts():
     """Test isolation: restore seed company state and student applications before every test."""
+    reset_rate_limits()
+    FAILED_ATTEMPTS.clear()
     db = SessionLocal()
     try:
         _ensure_seed_companies_active(db)

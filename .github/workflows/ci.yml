@@ -22,6 +22,8 @@ jobs:
         run: psql postgresql://postgres:postgres@localhost:5432/projectproof -f schema.sql
       - name: Install Python dependencies
         run: pip install -e "backend[dev]"
+      - name: Seed test database
+        run: cd backend && python -m scripts.seed
       - name: Lint backend
         run: cd backend && ruff check .
       - name: Run backend tests
