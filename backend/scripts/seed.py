@@ -3,7 +3,7 @@
 Produces:
   - 1 admin
   - 2 approved companies (Nova Labs, Keystone Soft) + 1 pending (BrightWave Tech)
-  - 1 approved recruiter
+  - 1 pending recruiter
   - 5 students (all public)
   - 6 open projects (3 per approved company)
   - 3 completed projects with certificates:
@@ -174,7 +174,7 @@ def seed_database():
             students.append(s_user)
         db.commit()
 
-        # ── 6. Recruiter: Apex Talent Search ─────────────────────────────────
+        # ── 6. Pending recruiter: Apex Talent Search ─────────────────────────
         r_user = _get_or_create_user(
             db, "recruiter@apexsearch.com", "Recruiter2026!", "recruiter", now
         )
@@ -185,10 +185,10 @@ def seed_database():
                     full_name="Vikram Mehta",
                     organization="Apex Talent Search",
                     work_email_domain="apexsearch.com",
-                    status="approved",
+                    status="pending",
                 )
             )
-            print("Recruiter: Vikram Mehta (Apex Talent Search) [approved]")
+            print("Recruiter: Vikram Mehta (Apex Talent Search) [pending]")
         db.commit()
 
         # ── 7. Open projects (6 total: 3 per approved company) ───────────────

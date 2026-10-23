@@ -47,28 +47,30 @@ class CompanyService:
     def compute_automated_checks(
         db: Session, company: Company, owner_email: str | None = None
     ) -> AutomatedCompanyChecks:
-        email_domain = (company.email_domain or "").lower()
-        if not email_domain and owner_email:
-            email_domain = extract_email_domain(owner_email)
+        company_domain = (company.email_domain or "").lower()
+        work_email_domain = (
+            extract_email_domain(owner_email) if owner_email else company_domain
+        )
 
         website_domain = normalize_domain(company.website)
         domain_matches_website = False
-        if website_domain and email_domain:
-            domain_matches_website = (website_domain == email_domain) or (
-                email_domain.endswith("." + website_domain)
+        if website_domain and work_email_domain:
+            domain_matches_website = (website_domain == work_email_domain) or (
+                work_email_domain.endswith("." + website_domain)
             )
 
         doc_uploaded = bool(company.registration_doc_key and company.registration_doc_key.strip())
 
         # Check domain conflicts
         other_companies = []
-        if email_domain:
+        conflict_domain = company_domain or work_email_domain
+        if conflict_domain:
             other_companies = CompanyRepository.get_by_domain(
-                db, email_domain, exclude_company_id=company.id
+                db, conflict_domain, exclude_company_id=company.id
             )
         domain_conflict = len(other_companies) > 0
 
-        is_free = email_domain in FREE_EMAIL_DOMAINS
+        is_free = work_email_domain in FREE_EMAIL_DOMAINS
 
         return AutomatedCompanyChecks(
             domain_matches_website=domain_matches_website,
