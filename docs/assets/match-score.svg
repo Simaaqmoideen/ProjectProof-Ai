@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="224" viewBox="0 0 720 224" role="img" aria-labelledby="title description">
+  <title id="title">Project match score weights</title>
+  <desc id="description">Skills count for 50 percent, difficulty fit and experience 20 percent each, and availability 10 percent.</desc>
+  <rect width="720" height="224" rx="6" fill="#fff" stroke="#ebebeb"/>
+  <text x="28" y="34" fill="#171717" font-family="Arial, sans-serif" font-size="16" font-weight="600">Match score composition</text>
+  <text x="28" y="54" fill="#666" font-family="Courier New, monospace" font-size="9" letter-spacing="1">DETERMINISTIC WEIGHTS · TOTAL = 100%</text>
+  <g font-family="Arial, sans-serif" font-size="12" fill="#4d4d4d">
+    <text x="28" y="91">Skills</text>
+    <text x="28" y="127">Difficulty fit</text>
+    <text x="28" y="163">Experience</text>
+    <text x="28" y="199">Availability</text>
+  </g>
+  <g fill="#ebebeb">
+    <rect x="160" y="77" width="430" height="16" rx="3"/>
+    <rect x="160" y="113" width="430" height="16" rx="3"/>
+    <rect x="160" y="149" width="430" height="16" rx="3"/>
+    <rect x="160" y="185" width="430" height="16" rx="3"/>
+  </g>
+  <g fill="#171717">
+    <rect x="160" y="77" width="215" height="16" rx="3"/>
+    <rect x="160" y="113" width="86" height="16" rx="3"/>
+    <rect x="160" y="149" width="86" height="16" rx="3"/>
+    <rect x="160" y="185" width="43" height="16" rx="3"/>
+  </g>
+  <g fill="#171717" font-family="Courier New, monospace" font-size="11" text-anchor="end">
+    <text x="674" y="90">50%</text>
+    <text x="674" y="126">20%</text>
+    <text x="674" y="162">20%</text>
+    <text x="674" y="198">10%</text>
+  </g>
+</svg>

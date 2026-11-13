@@ -5,43 +5,67 @@ Keystone Soft as part of their scenarios, and Phase 2 project tests accumulate
 open projects that hit the FR-ORG-5 limit (max 2 open projects).
 This fixture ensures seed company/user state is clean before each test.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.rate_limit import reset_rate_limits
 from app.db import SessionLocal
 from app.main import app
 from app.models.project import Project
 from app.models.user import Company, CompanyMember, User
+from app.services.auth_service import FAILED_ATTEMPTS
 
 
 def _ensure_seed_companies_active(db) -> None:
-    """Make sure Nova Labs and Keystone Soft are approved+active with no open projects."""
-    for user_email in [
-        "contact@novalabs.com",
-        "contact@keystonesoft.io",
-    ]:
+    """Restore seed companies and keep one stable demo project open per company."""
+    seed_project_by_company_email = {
+        "contact@novalabs.com": "API Gateway Microservices",
+        "contact@keystonesoft.io": "React Component Library",
+    }
+    for user_email, seed_project_title in seed_project_by_company_email.items():
         # Reactivate user if suspended
         user = db.query(User).filter(User.email == user_email).first()
         if user and not user.is_active:
             user.is_active = True
 
         # Reapprove company if suspended/rejected
-        member = db.query(CompanyMember).join(User, CompanyMember.user_id == User.id).filter(
-            User.email == user_email
-        ).first()
+        member = (
+            db.query(CompanyMember)
+            .join(User, CompanyMember.user_id == User.id)
+            .filter(User.email == user_email)
+            .first()
+        )
         if member:
             company = db.query(Company).filter(Company.id == member.company_id).first()
             if company and company.status != "approved":
                 company.status = "approved"
 
-            # Close all open projects from previous runs (prevents FR-ORG-5 limit breach)
-            if member:
-                open_projs = db.query(Project).filter(
+            # Keep one seed project available to project/AI tests and close
+            # test-created projects so the company publishing limit remains available.
+            open_projs = (
+                db.query(Project)
+                .filter(
                     Project.company_id == member.company_id,
                     Project.status == "open",
-                ).all()
-                for proj in open_projs:
+                )
+                .all()
+            )
+            for proj in open_projs:
+                if proj.title != seed_project_title:
                     proj.status = "closed"
+
+            seed_project = (
+                db.query(Project)
+                .filter(
+                    Project.company_id == member.company_id,
+                    Project.title == seed_project_title,
+                    Project.status != "removed",
+                )
+                .first()
+            )
+            if seed_project:
+                seed_project.status = "open"
 
     db.commit()
 
@@ -49,33 +73,49 @@ def _ensure_seed_companies_active(db) -> None:
 def _clean_seed_student_applications(db) -> None:
     """Clear test applications for seed students so tests don't hit the 3-active application limit."""
     from sqlalchemy import text
-    seed_student_emails = ["ananya@example.com", "rohit@example.com", "priya@example.com", "dev@example.com"]
+
+    seed_student_emails = [
+        "ananya@example.com",
+        "rohit@example.com",
+        "priya@example.com",
+        "dev@example.com",
+    ]
     student_users = db.query(User).filter(User.email.in_(seed_student_emails)).all()
     student_ids = [u.id for u in student_users]
     if student_ids:
         # Delete appeals for these students
         db.execute(text("DELETE FROM appeals WHERE student_id = ANY(:sids)"), {"sids": student_ids})
         # Delete uncertified applications for these students
-        db.execute(text("""
+        db.execute(
+            text("""
             DELETE FROM applications
             WHERE student_id = ANY(:sids)
               AND id NOT IN (SELECT application_id FROM certificates)
-        """), {"sids": student_ids})
+        """),
+            {"sids": student_ids},
+        )
         db.commit()
 
 
 @pytest.fixture(scope="session")
 def client() -> TestClient:
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 8000))
 
 
 @pytest.fixture(autouse=True)
 def restore_seed_accounts():
     """Test isolation: restore seed company state and student applications before every test."""
+    reset_rate_limits()
+    FAILED_ATTEMPTS.clear()
     db = SessionLocal()
     try:
         _ensure_seed_companies_active(db)
         _clean_seed_student_applications(db)
+        # Clear recent ai_logs so test runs don't hit the daily quota limit
+        from sqlalchemy import text
+
+        db.execute(text("DELETE FROM ai_logs"))
+        db.commit()
     finally:
         db.close()
     yield

@@ -9,8 +9,15 @@ from app.schemas.admin import AutomatedCompanyChecks
 from app.services.audit_service import AuditService
 
 FREE_EMAIL_DOMAINS = {
-    "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "icloud.com",
-    "mail.com", "protonmail.com", "zoho.com", "aol.com",
+    "gmail.com",
+    "yahoo.com",
+    "hotmail.com",
+    "outlook.com",
+    "icloud.com",
+    "mail.com",
+    "protonmail.com",
+    "zoho.com",
+    "aol.com",
 }
 
 
@@ -37,25 +44,33 @@ def extract_email_domain(email: str) -> str:
 
 class CompanyService:
     @staticmethod
-    def compute_automated_checks(db: Session, company: Company, owner_email: str | None = None) -> AutomatedCompanyChecks:
-        email_domain = (company.email_domain or "").lower()
-        if not email_domain and owner_email:
-            email_domain = extract_email_domain(owner_email)
+    def compute_automated_checks(
+        db: Session, company: Company, owner_email: str | None = None
+    ) -> AutomatedCompanyChecks:
+        company_domain = (company.email_domain or "").lower()
+        work_email_domain = (
+            extract_email_domain(owner_email) if owner_email else company_domain
+        )
 
         website_domain = normalize_domain(company.website)
         domain_matches_website = False
-        if website_domain and email_domain:
-            domain_matches_website = (website_domain == email_domain) or (email_domain.endswith("." + website_domain))
+        if website_domain and work_email_domain:
+            domain_matches_website = (website_domain == work_email_domain) or (
+                work_email_domain.endswith("." + website_domain)
+            )
 
         doc_uploaded = bool(company.registration_doc_key and company.registration_doc_key.strip())
 
         # Check domain conflicts
         other_companies = []
-        if email_domain:
-            other_companies = CompanyRepository.get_by_domain(db, email_domain, exclude_company_id=company.id)
+        conflict_domain = company_domain or work_email_domain
+        if conflict_domain:
+            other_companies = CompanyRepository.get_by_domain(
+                db, conflict_domain, exclude_company_id=company.id
+            )
         domain_conflict = len(other_companies) > 0
 
-        is_free = email_domain in FREE_EMAIL_DOMAINS
+        is_free = work_email_domain in FREE_EMAIL_DOMAINS
 
         return AutomatedCompanyChecks(
             domain_matches_website=domain_matches_website,
@@ -89,7 +104,9 @@ class CompanyService:
         if email_domain:
             active_companies_on_domain = CompanyRepository.get_by_domain(db, email_domain)
             if active_companies_on_domain:
-                raise ConflictError("Another active company is already registered with this domain.")
+                raise ConflictError(
+                    "Another active company is already registered with this domain."
+                )
 
         # BR-6: Trust score starts at 50 *when approved*. It is 0 here so the
         # automated-checks display is informational only and does not set the score.

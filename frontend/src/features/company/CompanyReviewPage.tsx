@@ -104,16 +104,35 @@ export const CompanyReviewPage: React.FC = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
+  // Phase 7: AI Feedback Drafter (FR-EVL-5) & Mentor Usage (FR-WRK-5)
+  const [usedAiDraft, setUsedAiDraft] = useState(false);
+  const [showAiDrafter, setShowAiDrafter] = useState(false);
+  const [roughNotes, setRoughNotes] = useState('');
+  const [draftingBusy, setDraftingBusy] = useState(false);
+  const [draftErr, setDraftErr] = useState<string | null>(null);
+  const [mentorUsage, setMentorUsage] = useState<{ total_exchanges: number; note: string } | null>(null);
+
   const fetchData = useCallback(async () => {
     if (!submissionId) return;
     try {
       const sub = await apiRequest<SubmissionDetail>(`/submissions/${submissionId}`);
       setSubmission(sub);
+
       // Check if already evaluated
       try {
         const ev = await apiRequest<EvaluationResult>(`/submissions/${submissionId}/evaluation`);
         setEvaluation(ev);
       } catch { /* not yet evaluated */ }
+
+      // Fetch student mentor usage (FR-WRK-5)
+      if (sub.application_id) {
+        try {
+          const usage = await apiRequest<{ total_exchanges: number; note: string }>(
+            `/applications/${sub.application_id}/mentor-usage`
+          );
+          setMentorUsage(usage);
+        } catch { /* mentor usage optional */ }
+      }
     } catch (e) {
       setError(e instanceof ApiException ? e.message : 'Failed to load submission');
     } finally { setLoading(false); }
@@ -123,6 +142,53 @@ export const CompanyReviewPage: React.FC = () => {
 
   const updateRubric = (field: string, val: number) =>
     setRubric(prev => ({ ...prev, [field]: val }));
+
+  // Draft feedback with AI (FR-EVL-5)
+  const draftFeedbackWithAi = async () => {
+    if (!submissionId || !roughNotes.trim()) return;
+    setDraftingBusy(true);
+    setDraftErr(null);
+    try {
+      const res = await apiRequest<{
+        ai: { label: string };
+        result: {
+          strengths: string[];
+          improvements: string[];
+          next_steps: string[];
+          suggested_public_summary: string;
+        };
+      }>('/ai/evaluations/draft-feedback', {
+        method: 'POST',
+        body: JSON.stringify({
+          submission_id: submissionId,
+          rough_notes: roughNotes.trim(),
+          rubric_scores: rubric,
+        }),
+      });
+
+      const structuredFeedback = [
+        'Strengths:',
+        ...(res.result.strengths || []).map(s => `- ${s}`),
+        '',
+        'Areas for Improvement:',
+        ...(res.result.improvements || []).map(i => `- ${i}`),
+        '',
+        'Next Steps:',
+        ...(res.result.next_steps || []).map(n => `- ${n}`),
+      ].join('\n');
+
+      setFeedback(structuredFeedback);
+      if (res.result.suggested_public_summary) {
+        setPublicSummary(res.result.suggested_public_summary);
+      }
+      setUsedAiDraft(true);
+      setShowAiDrafter(false);
+    } catch (e) {
+      setDraftErr(e instanceof ApiException ? e.message : 'AI drafting failed');
+    } finally {
+      setDraftingBusy(false);
+    }
+  };
 
   // Overall score = average of rubric fields, clamped 0–100
   const overallScore = Math.round(
@@ -148,6 +214,7 @@ export const CompanyReviewPage: React.FC = () => {
           feedback: feedback.trim(),
           public_summary: publicSummary.trim() || null,
           decision,
+          used_ai_draft: usedAiDraft,
         }),
       });
       setSubmitSuccess(true);
@@ -367,18 +434,82 @@ export const CompanyReviewPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* AI Feedback Drafter Trigger (FR-EVL-5) */}
+              <div className="mb-4 p-3.5 rounded-[6px] border border-[#ebebeb]" style={{ background: '#fafafa' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm" style={{ color: '#297a3a' }}>✦</span>
+                    <span className="font-mono text-xs uppercase tracking-wider" style={{ color: '#171717' }}>
+                      AI Feedback Drafter
+                    </span>
+                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-[4px]"
+                      style={{ background: '#f5f5f5', color: '#737373', border: '1px solid #e5e5e5' }}>
+                      AI draft
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAiDrafter(!showAiDrafter)}
+                    className="font-mono text-xs uppercase tracking-wider underline"
+                    style={{ color: '#297a3a' }}
+                  >
+                    {showAiDrafter ? 'Hide Drafter' : 'Draft with AI'}
+                  </button>
+                </div>
+
+                {showAiDrafter && (
+                  <div className="mt-3 space-y-2.5 pt-3 border-t border-[#ebebeb]">
+                    <p className="text-xs" style={{ color: '#737373' }}>
+                      Enter your rough reviewer notes (observations, bugs, code style). AI will synthesize structured feedback and a public summary grounded strictly in your notes.
+                    </p>
+                    <textarea
+                      rows={3}
+                      value={roughNotes}
+                      onChange={e => setRoughNotes(e.target.value)}
+                      placeholder="e.g. Great tests and structure. Missed pagination on list endpoint. Strong error handling..."
+                      className="w-full text-xs px-3 py-2 rounded-[6px] outline-none"
+                      style={{ border: '1px solid #ebebeb', background: '#ffffff', color: '#171717' }}
+                    />
+                    {draftErr && (
+                      <p className="text-xs font-mono" style={{ color: '#c4231c' }}>{draftErr}</p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={draftFeedbackWithAi}
+                      disabled={draftingBusy || !roughNotes.trim()}
+                      className="px-3 py-1.5 text-xs rounded-[6px] font-mono uppercase tracking-wider"
+                      style={{
+                        background: '#171717',
+                        color: '#ffffff',
+                        opacity: draftingBusy || !roughNotes.trim() ? 0.5 : 1,
+                      }}
+                    >
+                      {draftingBusy ? 'Synthesizing Feedback…' : 'Generate Structured Draft'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* Feedback */}
               <div className="mb-4">
-                <label
-                  htmlFor="eval-feedback"
-                  className="block font-mono text-[11px] uppercase tracking-widest mb-2"
-                  style={{ color: '#8f8f8f' }}
-                >
-                  Feedback <span style={{ color: '#c4231c' }}>*</span>
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label
+                    htmlFor="eval-feedback"
+                    className="block font-mono text-[11px] uppercase tracking-widest"
+                    style={{ color: '#8f8f8f' }}
+                  >
+                    Feedback <span style={{ color: '#c4231c' }}>*</span>
+                  </label>
+                  {usedAiDraft && (
+                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-[4px]"
+                      style={{ background: '#f5f5f5', color: '#737373', border: '1px solid #e5e5e5' }}>
+                      AI draft (review and accept)
+                    </span>
+                  )}
+                </div>
                 <textarea
                   id="eval-feedback"
-                  rows={5}
+                  rows={6}
                   value={feedback}
                   onChange={e => setFeedback(e.target.value)}
                   placeholder="Detailed feedback for the student…"
@@ -457,6 +588,25 @@ export const CompanyReviewPage: React.FC = () => {
               ))}
             </dl>
           </div>
+
+          {/* Student Mentor Usage (FR-WRK-5) */}
+          {mentorUsage && (
+            <div className="rounded-[6px] p-4"
+              style={{ background: '#ffffff', boxShadow: '0 0 0 1px rgba(0,0,0,0.08), 0 0 0 2px #fafafa' }}>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-mono text-[11px] uppercase tracking-widest" style={{ color: '#8f8f8f' }}>
+                  AI Mentor Usage
+                </h3>
+                <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-[4px]"
+                  style={{ background: '#fafafa', border: '1px solid #ebebeb', color: '#171717' }}>
+                  {mentorUsage.total_exchanges} exchanges
+                </span>
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: '#737373' }}>
+                {mentorUsage.note}
+              </p>
+            </div>
+          )}
 
           {/* Evaluation guide */}
           <div className="rounded-[6px] p-4"

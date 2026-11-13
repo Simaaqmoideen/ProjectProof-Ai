@@ -174,6 +174,7 @@ COOKIE_SECURE=false
 # Storage
 STORAGE_BACKEND=local            # local | s3
 STORAGE_LOCAL_PATH=./storage
+TRUSTED_PROXY_IPS=127.0.0.1,::1 # Comma-separated direct proxy IPs allowed to supply X-Forwarded-For
 S3_ENDPOINT=
 S3_BUCKET=
 S3_ACCESS_KEY=

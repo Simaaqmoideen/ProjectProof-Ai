@@ -1,6 +1,7 @@
 """Notifications service (in-app notifications).
 See docs/01 and docs/05.
 """
+
 import uuid
 
 from sqlalchemy import text

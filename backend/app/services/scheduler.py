@@ -1,6 +1,7 @@
 """Scheduler jobs: overdue milestones and late resubmissions.
 See docs/01 FR-WRK-4, FR-EVL-6, and docs/08 T-WRK-03, T-EVL-06.
 """
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -9,7 +10,7 @@ from app.services.notifications import create_notification
 
 def run_check_overdue_milestones(db: Session) -> int:
     """Flag overdue milestones and notify both sides ONCE (FR-WRK-4, T-WRK-03).
-    
+
     Returns count of newly notified overdue milestones.
     """
     rows = db.execute(
@@ -32,7 +33,7 @@ def run_check_overdue_milestones(db: Session) -> int:
     notified_count = 0
     for r in rows:
         app_id, student_id, company_id, milestone_id, m_title, p_title, _due = r
-        
+
         # Check if already notified for this milestone to ensure once-only notification (T-WRK-03)
         existing = db.execute(
             text("""
@@ -55,7 +56,9 @@ def run_check_overdue_milestones(db: Session) -> int:
             )
             # Notify company
             comp_member = db.execute(
-                text("SELECT user_id FROM company_members WHERE company_id = :comp_id ORDER BY member_role = 'owner' DESC LIMIT 1"),
+                text(
+                    "SELECT user_id FROM company_members WHERE company_id = :comp_id ORDER BY member_role = 'owner' DESC LIMIT 1"
+                ),
                 {"comp_id": company_id},
             ).fetchone()
             if comp_member:
@@ -75,7 +78,7 @@ def run_check_overdue_milestones(db: Session) -> int:
 
 def run_check_late_resubmissions(db: Session) -> int:
     """Fail applications where resubmission deadline (due_at + 3 days) has passed (FR-EVL-6, T-EVL-06).
-    
+
     Returns count of failed applications.
     """
     rows = db.execute(
@@ -110,3 +113,14 @@ def run_check_late_resubmissions(db: Session) -> int:
         failed_count += 1
 
     return failed_count
+
+
+def run_daily_anomaly_scan(db: Session) -> int:
+    """Run daily deterministic anomaly detection rules A1-A5 (FR-ADM-7).
+
+    Returns count of newly opened anomaly flags.
+    """
+    from app.services.anomaly_detection import scan_anomalies
+
+    res = scan_anomalies(db)
+    return res.get("new_flags_opened", 0)

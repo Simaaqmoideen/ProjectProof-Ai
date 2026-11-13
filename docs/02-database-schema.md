@@ -85,7 +85,7 @@ erDiagram
 | Table | Purpose |
 |---|---|
 | `flags` | Items for admin review: similarity, anomaly or manual |
-| `ai_logs` | Every AI call: feature, prompt version, model, output, confidence, whether a person accepted it, token counts |
+| `ai_logs` | Every AI provider attempt: feature, prompt version, model, input hash, output, confidence, whether a person accepted it, token counts; mentor attempts include nullable `application_id` for application-scoped usage counts |
 | `audit_log` | Append-only record of admin and company actions |
 | `notifications` | In-app notifications |
 | `consent_log` | When a user granted or withdrew a consent (for example profile visibility) |

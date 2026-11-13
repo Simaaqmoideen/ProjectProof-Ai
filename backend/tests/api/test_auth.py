@@ -8,34 +8,43 @@ def test_t_auth_01_register_student_company_recruiter(client: TestClient):
     unique_suffix = uuid.uuid4().hex[:8]
 
     # Register student
-    res_stu = client.post("/api/v1/auth/register", json={
-        "email": f"student_{unique_suffix}@example.com",
-        "password": "ValidPassword2026!",
-        "role": "student",
-        "full_name": "Test Student",
-    })
+    res_stu = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": f"student_{unique_suffix}@example.com",
+            "password": "ValidPassword2026!",
+            "role": "student",
+            "full_name": "Test Student",
+        },
+    )
     assert res_stu.status_code == 201, res_stu.text
     data_stu = res_stu.json()
     assert data_stu["role"] == "student"
     assert data_stu["email_verified"] is False
 
     # Register company
-    res_cmp = client.post("/api/v1/auth/register", json={
-        "email": f"contact_{unique_suffix}@techcorp.com",
-        "password": "ValidPassword2026!",
-        "role": "company",
-    })
+    res_cmp = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": f"contact_{unique_suffix}@techcorp.com",
+            "password": "ValidPassword2026!",
+            "role": "company",
+        },
+    )
     assert res_cmp.status_code == 201, res_cmp.text
     data_cmp = res_cmp.json()
     assert data_cmp["role"] == "company"
     assert data_cmp["email_verified"] is False
 
     # Register recruiter
-    res_rec = client.post("/api/v1/auth/register", json={
-        "email": f"recruiter_{unique_suffix}@agency.com",
-        "password": "ValidPassword2026!",
-        "role": "recruiter",
-    })
+    res_rec = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": f"recruiter_{unique_suffix}@agency.com",
+            "password": "ValidPassword2026!",
+            "role": "recruiter",
+        },
+    )
     assert res_rec.status_code == 201, res_rec.text
     data_rec = res_rec.json()
     assert data_rec["role"] == "recruiter"
@@ -50,11 +59,14 @@ def test_t_auth_02_act_before_verifying_email(client: TestClient):
     pwd = "ValidPassword2026!"
 
     # Register student (email_verified=False)
-    reg_res = client.post("/api/v1/auth/register", json={
-        "email": email,
-        "password": pwd,
-        "role": "company",
-    })
+    reg_res = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "password": pwd,
+            "role": "company",
+        },
+    )
     assert reg_res.status_code == 201
 
     # Login succeeds even when email not verified (FR-AUTH-3 allows login; FR-AUTH-2 gates actions)
@@ -81,7 +93,12 @@ def test_t_auth_02_act_before_verifying_email(client: TestClient):
     # 2. Creating a project draft also blocked
     draft_res = client.post(
         "/api/v1/companies/me/projects",
-        json={"title": "Test", "description": "Test description.", "difficulty": "beginner", "duration_days": 7},
+        json={
+            "title": "Test",
+            "description": "Test description.",
+            "difficulty": "beginner",
+            "duration_days": 7,
+        },
         headers=headers,
     )
     assert draft_res.status_code == 403
@@ -156,11 +173,14 @@ def test_t_auth_05_reuse_rotated_refresh_token(client: TestClient):
 
 def test_t_auth_06_public_signup_role_admin_rejected(client: TestClient):
     """T-AUTH-06 (FR-AUTH-6): Public sign-up with role=admin -> Rejected; admins created only via CLI script."""
-    res = client.post("/api/v1/auth/register", json={
-        "email": f"hacker_{uuid.uuid4().hex[:8]}@example.com",
-        "password": "ValidPassword2026!",
-        "role": "admin",
-    })
+    res = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": f"hacker_{uuid.uuid4().hex[:8]}@example.com",
+            "password": "ValidPassword2026!",
+            "role": "admin",
+        },
+    )
     # Must be rejected with 403 forbidden or 400 validation error
     assert res.status_code in (400, 403)
 
@@ -168,10 +188,13 @@ def test_t_auth_06_public_signup_role_admin_rejected(client: TestClient):
 def test_t_auth_07_authorization_matrix(client: TestClient):
     """T-AUTH-07 (FR-AUTH-5): Authorization matrix: Student and company cannot reach admin routes."""
     # Login as student
-    stu_login = client.post("/api/v1/auth/login", json={
-        "email": "ananya@example.com",
-        "password": "StudentPass2026!",
-    })
+    stu_login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "ananya@example.com",
+            "password": "StudentPass2026!",
+        },
+    )
     stu_token = stu_login.json()["access_token"]
     stu_headers = {"Authorization": f"Bearer {stu_token}"}
 
@@ -182,10 +205,13 @@ def test_t_auth_07_authorization_matrix(client: TestClient):
     assert res_audit.status_code == 403
 
     # Login as company
-    cmp_login = client.post("/api/v1/auth/login", json={
-        "email": "contact@novalabs.com",
-        "password": "NovaLabs2026!",
-    })
+    cmp_login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "contact@novalabs.com",
+            "password": "NovaLabs2026!",
+        },
+    )
     cmp_token = cmp_login.json()["access_token"]
     cmp_headers = {"Authorization": f"Bearer {cmp_token}"}
 
@@ -199,10 +225,13 @@ def test_t_auth_08_other_user_record_returns_404(client: TestClient):
     Authorization order: role -> ownership -> state. Another user's record returns 404 (AGENTS.md rule 6).
     """
     # An unmapped / other user resource returns 404, not 403
-    stu_login = client.post("/api/v1/auth/login", json={
-        "email": "ananya@example.com",
-        "password": "StudentPass2026!",
-    })
+    stu_login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "ananya@example.com",
+            "password": "StudentPass2026!",
+        },
+    )
     stu_token = stu_login.json()["access_token"]
     headers = {"Authorization": f"Bearer {stu_token}"}
 
@@ -221,11 +250,14 @@ def test_fr_auth_04_password_reset(client: TestClient):
     new_pwd = "NewSecurePassword2026!"
 
     # Register user
-    reg = client.post("/api/v1/auth/register", json={
-        "email": email,
-        "password": pwd,
-        "role": "student",
-    })
+    reg = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "password": pwd,
+            "role": "student",
+        },
+    )
     assert reg.status_code == 201
 
     # Request password reset (FR-AUTH-4)
@@ -237,6 +269,7 @@ def test_fr_auth_04_password_reset(client: TestClient):
     from app.core.security import create_password_reset_token
     from app.db import SessionLocal
     from app.models.user import User
+
     db = SessionLocal()
     user = db.query(User).filter(User.email == email).first()
     assert user is not None
@@ -244,10 +277,13 @@ def test_fr_auth_04_password_reset(client: TestClient):
     db.close()
 
     # Reset password with valid token
-    reset_res = client.post("/api/v1/auth/reset-password", json={
-        "token": token,
-        "new_password": new_pwd,
-    })
+    reset_res = client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "token": token,
+            "new_password": new_pwd,
+        },
+    )
     assert reset_res.status_code == 200
     assert "Password reset successfully" in reset_res.json()["message"]
 
@@ -259,4 +295,3 @@ def test_fr_auth_04_password_reset(client: TestClient):
     new_login = client.post("/api/v1/auth/login", json={"email": email, "password": new_pwd})
     assert new_login.status_code == 200
     assert "access_token" in new_login.json()
-

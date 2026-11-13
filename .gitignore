@@ -8,3 +8,6 @@ dist/
 backups/
 *.tsbuildinfo
 .pytest_cache/
+.ruff_cache/
+playwright-report/
+test-results/

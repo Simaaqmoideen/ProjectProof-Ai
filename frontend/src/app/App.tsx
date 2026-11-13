@@ -7,6 +7,8 @@ import { LoginPage } from '../features/auth/LoginPage';
 import { RegisterPage } from '../features/auth/RegisterPage';
 import { AdminApprovalQueuePage } from '../features/admin/AdminApprovalQueuePage';
 import { StudentDashboardPage } from '../features/student/StudentDashboardPage';
+import { StudentProfilePage } from '../features/student/StudentProfilePage';
+import { StudentPortfolioPage } from '../features/student/StudentPortfolioPage';
 import { CompanyDashboardPage } from '../features/company/CompanyDashboardPage';
 import { RecruiterDashboardPage } from '../features/recruiter/RecruiterDashboardPage';
 import { PublicVerificationPage } from '../features/verification/PublicVerificationPage';
@@ -15,6 +17,7 @@ import { ProjectDetailPage } from '../features/projects/ProjectDetailPage';
 import { CompanyApplicantsPage } from '../features/company/CompanyApplicantsPage';
 import { CompanyReviewPage } from '../features/company/CompanyReviewPage';
 import { WorkspacePage } from '../features/student/WorkspacePage';
+import { NotificationsPage } from '../features/notifications/NotificationsPage';
 
 const ProtectedRoute: React.FC<{
   children: React.ReactNode;
@@ -114,12 +117,44 @@ export const App: React.FC = () => {
                 }
               />
 
+              {/* Notifications (all authenticated roles) */}
+              <Route
+                path="/notifications"
+                element={
+                  <ProtectedRoute>
+                    <NotificationsPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Student portfolio — public via /students/:id/portfolio */}
+              <Route
+                path="/students/:id/portfolio"
+                element={<StudentPortfolioPage />}
+              />
+
               {/* Role Dashboards */}
               <Route
                 path="/student"
                 element={
                   <ProtectedRoute allowedRoles={['student']}>
                     <StudentDashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/student/profile"
+                element={
+                  <ProtectedRoute allowedRoles={['student']}>
+                    <StudentProfilePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/student/portfolio"
+                element={
+                  <ProtectedRoute allowedRoles={['student']}>
+                    <StudentPortfolioPage />
                   </ProtectedRoute>
                 }
               />

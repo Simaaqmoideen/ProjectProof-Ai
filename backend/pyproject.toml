@@ -3,17 +3,35 @@ name = "projectproof-backend"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-  "fastapi", "uvicorn[standard]", "sqlalchemy>=2", "alembic", "psycopg[binary]",
-  "pydantic>=2", "pydantic-settings", "argon2-cffi", "pyjwt", "python-multipart",
-  "weasyprint", "qrcode[pil]", "pypdf", "httpx",
+  "fastapi",
+  "uvicorn[standard]",
+  "sqlalchemy>=2",
+  "alembic",
+  "psycopg[binary]",
+  "pydantic>=2",
+  "pydantic-settings",
+  "argon2-cffi",
+  "pyjwt",
+  "python-multipart",
+  "weasyprint",
+  "qrcode[pil]",
+  "pypdf",
+  "httpx",
+  "reportlab",
+  "email-validator>=2.3.0",
 ]
 [project.optional-dependencies]
 dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
 [tool.ruff]
 line-length = 100
 
 [tool.ruff.lint]
-ignore = ["B008", "BLE001"]
+ignore = ["B008", "BLE001", "UP047"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

@@ -1,4 +1,5 @@
 """Create an admin from the command line. Admins are never created by public sign-up (FR-AUTH-6)."""
+
 import argparse
 import sys
 from datetime import UTC, datetime
@@ -57,7 +58,9 @@ def create_admin(email: str, password: str) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Create an admin user for ProjectProof AI.")
     parser.add_argument("--email", default="admin@projectproof.ai", help="Admin email address")
-    parser.add_argument("--password", default="AdminSecure2026!", help="Admin password (at least 10 chars)")
+    parser.add_argument(
+        "--password", default="AdminSecure2026!", help="Admin password (at least 10 chars)"
+    )
     args = parser.parse_args()
 
     create_admin(args.email, args.password)

@@ -1,4 +1,5 @@
 """Project repository — parameterised queries only (AGENTS.md rule 5)."""
+
 import uuid
 from datetime import datetime
 
@@ -79,11 +80,7 @@ class ProjectRepository:
         """Parameterised update. Only set provided fields."""
         if not fields:
             return
-        stmt = (
-            update(Project)
-            .where(Project.id == project_id)
-            .values(**fields)
-        )
+        stmt = update(Project).where(Project.id == project_id).values(**fields)
         db.execute(stmt)
 
     @staticmethod
@@ -103,9 +100,7 @@ class ProjectRepository:
     @staticmethod
     def get_or_create_skill(db: Session, name: str) -> "Skill":
         """Case-insensitive lookup via CITEXT column; create if absent."""
-        skill = db.execute(
-            select(Skill).where(Skill.name == name.strip())
-        ).scalar_one_or_none()
+        skill = db.execute(select(Skill).where(Skill.name == name.strip())).scalar_one_or_none()
         if not skill:
             skill = Skill(name=name.strip())
             db.add(skill)
@@ -115,22 +110,22 @@ class ProjectRepository:
     @staticmethod
     def replace_skills(db: Session, project_id: uuid.UUID, skill_names: list[str]) -> None:
         # Remove existing
-        db.execute(
-            ProjectSkill.__table__.delete().where(
-                ProjectSkill.project_id == project_id
-            )
-        )
+        db.execute(ProjectSkill.__table__.delete().where(ProjectSkill.project_id == project_id))
         for name in skill_names:
             skill = ProjectRepository.get_or_create_skill(db, name)
             db.add(ProjectSkill(project_id=project_id, skill_id=skill.id))
 
     @staticmethod
     def get_skill_names(db: Session, project_id: uuid.UUID) -> list[str]:
-        rows = db.execute(
-            select(Skill.name)
-            .join(ProjectSkill, ProjectSkill.skill_id == Skill.id)
-            .where(ProjectSkill.project_id == project_id)
-        ).scalars().all()
+        rows = (
+            db.execute(
+                select(Skill.name)
+                .join(ProjectSkill, ProjectSkill.skill_id == Skill.id)
+                .where(ProjectSkill.project_id == project_id)
+            )
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     # ── Milestone helpers ─────────────────────────────────────────────────────
@@ -144,9 +139,7 @@ class ProjectRepository:
         """Delete-and-replace milestones (draft only). milestone_data is a
         list of dicts matching MilestoneCreate fields plus a 'tasks' list."""
         # Delete existing
-        db.execute(
-            Milestone.__table__.delete().where(Milestone.project_id == project_id)
-        )
+        db.execute(Milestone.__table__.delete().where(Milestone.project_id == project_id))
         db.flush()
         created = []
         for m in milestone_data:
@@ -160,11 +153,13 @@ class ProjectRepository:
             db.add(ms)
             db.flush()
             for pos, t in enumerate(m.get("tasks", []), start=1):
-                db.add(Task(
-                    milestone_id=ms.id,
-                    position=pos,
-                    title=t["title"],
-                    description=t.get("description"),
-                ))
+                db.add(
+                    Task(
+                        milestone_id=ms.id,
+                        position=pos,
+                        title=t["title"],
+                        description=t.get("description"),
+                    )
+                )
             created.append(ms)
         return created

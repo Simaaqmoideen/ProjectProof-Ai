@@ -354,6 +354,7 @@ CREATE INDEX idx_flags_status ON flags (status, kind);
 CREATE TABLE ai_logs (
   id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id        uuid REFERENCES users(id) ON DELETE SET NULL,
+  application_id uuid REFERENCES applications(id) ON DELETE SET NULL,
   feature        text NOT NULL,
   prompt_version text,
   model          text,
@@ -368,6 +369,7 @@ CREATE TABLE ai_logs (
 );
 CREATE INDEX idx_ai_logs_user_time ON ai_logs (user_id, created_at DESC);
 CREATE INDEX idx_ai_logs_feature ON ai_logs (feature, created_at DESC);
+CREATE INDEX idx_ai_logs_application_feature ON ai_logs (application_id, feature, created_at DESC);
 
 CREATE TABLE audit_log (
   id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

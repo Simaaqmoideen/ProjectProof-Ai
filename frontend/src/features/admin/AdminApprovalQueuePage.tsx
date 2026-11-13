@@ -65,12 +65,25 @@ interface AuditItem {
   created_at: string;
 }
 
+interface FlagItem {
+  id: string;
+  kind: string;
+  entity_type: string;
+  entity_id: string;
+  score: number;
+  details: { summary?: string; [key: string]: any } | null;
+  status: 'open' | 'confirmed' | 'dismissed';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
 interface AdminApprovalQueueProps {
-  defaultTab?: 'companies' | 'recruiters' | 'audit';
+  defaultTab?: 'companies' | 'recruiters' | 'audit' | 'anomalies';
 }
 
 export const AdminApprovalQueuePage: React.FC<AdminApprovalQueueProps> = ({ defaultTab = 'companies' }) => {
-  const [activeTab, setActiveTab] = useState<'companies' | 'recruiters' | 'audit'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'companies' | 'recruiters' | 'audit' | 'anomalies'>(defaultTab);
 
   // Companies state
   const [companies, setCompanies] = useState<CompanyItem[]>([]);
@@ -85,6 +98,13 @@ export const AdminApprovalQueuePage: React.FC<AdminApprovalQueueProps> = ({ defa
   // Audit state
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
+
+  // Anomaly & Flags state (FR-ADM-7)
+  const [flags, setFlags] = useState<FlagItem[]>([]);
+  const [flagStatusFilter, setFlagStatusFilter] = useState<string>('open');
+  const [loadingFlags, setLoadingFlags] = useState(false);
+  const [scanningAnomalies, setScanningAnomalies] = useState(false);
+  const [scanResult, setScanResult] = useState<{ rules_executed: number; flags_created: number } | null>(null);
 
   // Action modals
   const [rejectModal, setRejectModal] = useState<{ open: boolean; type: 'company' | 'recruiter'; id: string; name: string } | null>(null);
@@ -130,11 +150,72 @@ export const AdminApprovalQueuePage: React.FC<AdminApprovalQueueProps> = ({ defa
     }
   };
 
+  const flagsReqSeq = React.useRef(0);
+  const fetchFlags = async () => {
+    const seq = ++flagsReqSeq.current;
+    setLoadingFlags(true);
+    try {
+      const query = flagStatusFilter ? `?status=${flagStatusFilter}` : '';
+      const data = await apiRequest<{ items: FlagItem[]; total: number }>(`/admin/flags${query}`);
+      if (seq === flagsReqSeq.current) {
+        setFlags(data.items || []);
+      }
+    } catch (err: any) {
+      if (seq === flagsReqSeq.current) {
+        setActionMessage({ text: err.message || 'Failed to load anomaly flags', type: 'error' });
+      }
+    } finally {
+      if (seq === flagsReqSeq.current) {
+        setLoadingFlags(false);
+      }
+    }
+  };
+
+  const handleRunAnomalyScan = async () => {
+    setScanningAnomalies(true);
+    setScanResult(null);
+    try {
+      const data = await apiRequest<{ rules_executed: number; flags: any[] }>('/admin/anomalies/scan', {
+        method: 'POST',
+      });
+      setScanResult({ rules_executed: data.rules_executed, flags_created: (data.flags || []).length });
+      setActionMessage({
+        text: `Anomaly scan complete: ${data.rules_executed} rules executed, ${(data.flags || []).length} new flags flagged.`,
+        type: 'success',
+      });
+      fetchFlags();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Anomaly scan failed', type: 'error' });
+    } finally {
+      setScanningAnomalies(false);
+    }
+  };
+
+  const handleReviewFlag = async (flagId: string, reason: 'confirmed' | 'dismissed') => {
+    setIsProcessing(true);
+    try {
+      await apiRequest(`/admin/flags/${flagId}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      });
+      setActionMessage({
+        text: `Flag marked as ${reason}.`,
+        type: 'success',
+      });
+      fetchFlags();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Flag review failed', type: 'error' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'companies') fetchCompanies();
     else if (activeTab === 'recruiters') fetchRecruiters();
     else if (activeTab === 'audit') fetchAuditLogs();
-  }, [activeTab, companyStatusFilter, recruiterStatusFilter]);
+    else if (activeTab === 'anomalies') fetchFlags();
+  }, [activeTab, companyStatusFilter, recruiterStatusFilter, flagStatusFilter]);
 
   const handleApproveCompany = async (companyId: string, companyName: string) => {
     setIsProcessing(true);
@@ -255,6 +336,16 @@ export const AdminApprovalQueuePage: React.FC<AdminApprovalQueueProps> = ({ defa
               >
                 <History className="w-3.5 h-3.5" />
                 <span>Audit Log</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('anomalies')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[4px] transition-colors ${
+                  activeTab === 'anomalies' ? 'bg-[#ffffff] text-[#171717] shadow-sm' : 'text-[#7d7d7d] hover:text-[#171717]'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>Anomalies & Flags</span>
               </button>
             </div>
           </div>
@@ -631,6 +722,153 @@ export const AdminApprovalQueuePage: React.FC<AdminApprovalQueueProps> = ({ defa
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ===================== TAB 4: ANOMALIES & FLAGS (FR-ADM-7) ===================== */}
+        {activeTab === 'anomalies' && (
+          <div>
+            {/* Header & Controls Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-mono uppercase text-[#7d7d7d]">Status:</span>
+                {(['open', 'confirmed', 'dismissed', ''] as const).map((st) => (
+                  <button
+                    key={st || 'all'}
+                    onClick={() => setFlagStatusFilter(st)}
+                    className={`px-2.5 py-1 rounded-[4px] font-mono text-xs capitalize transition-colors ${
+                      flagStatusFilter === st
+                        ? 'bg-[#171717] text-[#ffffff]'
+                        : 'bg-[#ffffff] text-[#7d7d7d] border border-[#ebebeb] hover:text-[#171717]'
+                    }`}
+                  >
+                    {st || 'All'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-3">
+                {scanResult && (
+                  <span className="font-mono text-xs text-[#297a3a] bg-[#f0fdf4] px-2.5 py-1 rounded-[4px] border border-[#bbf7d0]">
+                    ✓ {scanResult.rules_executed} rules run · {scanResult.flags_created} new
+                  </span>
+                )}
+                <button
+                  onClick={handleRunAnomalyScan}
+                  disabled={scanningAnomalies}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-[4px] bg-[#171717] text-[#ffffff] font-mono text-xs uppercase tracking-wider hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 ${scanningAnomalies ? 'animate-spin' : ''}`} />
+                  <span>{scanningAnomalies ? 'Scanning A1–A5…' : 'Run Anomaly Scan'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Flags List Card */}
+            <div className="bg-[#ffffff] border border-[#ebebeb] rounded-[6px] overflow-hidden">
+              {loadingFlags ? (
+                <div className="py-16 text-center text-[#7d7d7d] text-sm flex flex-col items-center justify-center">
+                  <Loader2 className="w-6 h-6 animate-spin mb-2" />
+                  <span>Loading flagged anomalies...</span>
+                </div>
+              ) : flags.length === 0 ? (
+                <div className="py-16 text-center text-[#7d7d7d] text-sm">
+                  No {flagStatusFilter ? flagStatusFilter : ''} flags found in queue.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-[#ebebeb] text-xs text-left">
+                    <thead className="bg-[#fafafa] font-mono text-[#7d7d7d] uppercase text-[10px] tracking-wider">
+                      <tr>
+                        <th className="px-4 py-2.5">Rule / Kind</th>
+                        <th className="px-4 py-2.5">Entity</th>
+                        <th className="px-4 py-2.5">Score</th>
+                        <th className="px-4 py-2.5">Details</th>
+                        <th className="px-4 py-2.5">Status</th>
+                        <th className="px-4 py-2.5">Flagged At</th>
+                        <th className="px-4 py-2.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#ebebeb]">
+                      {flags.map((flag) => {
+                        const summary =
+                          flag.details?.summary ||
+                          (typeof flag.details === 'string' ? flag.details : JSON.stringify(flag.details));
+                        return (
+                          <tr key={flag.id} className="hover:bg-[#fafafa] transition-colors">
+                            <td className="px-4 py-2.5 font-mono font-semibold text-[#171717]">
+                              <span className="px-2 py-0.5 rounded bg-[#f5f5f5] border border-[#e5e5e5]">
+                                {flag.kind}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 font-mono text-[#4d4d4d]">
+                              <span className="capitalize">{flag.entity_type}</span>
+                              <span className="block text-[10px] text-[#8f8f8f] truncate max-w-[120px]">
+                                {flag.entity_id}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 font-mono">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  flag.score >= 80
+                                    ? 'bg-[#fef2f2] text-[#991b1b] border border-[#fecaca]'
+                                    : 'bg-[#fffbeb] text-[#92400e] border border-[#fde68a]'
+                                }`}
+                              >
+                                {flag.score}/100
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-[#171717] max-w-sm">
+                              <p className="line-clamp-2">{summary}</p>
+                            </td>
+                            <td className="px-4 py-2.5 font-mono text-[10px] uppercase">
+                              <span
+                                className={`px-2 py-0.5 rounded ${
+                                  flag.status === 'open'
+                                    ? 'bg-[#fef3c7] text-[#92400e]'
+                                    : flag.status === 'confirmed'
+                                    ? 'bg-[#dcfce7] text-[#15803d]'
+                                    : 'bg-[#f3f4f6] text-[#4b5563]'
+                                }`}
+                              >
+                                {flag.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-[#7d7d7d] font-mono text-[10px] whitespace-nowrap">
+                              {new Date(flag.created_at).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                              {flag.status === 'open' ? (
+                                <div className="flex items-center justify-end gap-1.5 font-mono text-[11px]">
+                                  <button
+                                    disabled={isProcessing}
+                                    onClick={() => handleReviewFlag(flag.id, 'confirmed')}
+                                    className="px-2 py-1 rounded bg-[#171717] text-white hover:opacity-90 disabled:opacity-50"
+                                  >
+                                    Confirm
+                                  </button>
+                                  <button
+                                    disabled={isProcessing}
+                                    onClick={() => handleReviewFlag(flag.id, 'dismissed')}
+                                    className="px-2 py-1 rounded border border-[#ebebeb] text-[#4d4d4d] hover:bg-white disabled:opacity-50"
+                                  >
+                                    Dismiss
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] font-mono text-[#8f8f8f]">
+                                  Reviewed
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

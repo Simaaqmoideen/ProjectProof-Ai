@@ -1,5 +1,5 @@
-
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.deps import get_db, require_roles, require_verified_email
@@ -106,7 +106,36 @@ def get_company_stats(
     current_user: User = Depends(require_roles("company")),
     db: Session = Depends(get_db),
 ):
+    """FR-ANA-2: Company statistics."""
     require_verified_email(current_user)
-    CompanyService.get_company_by_user(db, current_user)
-    # Default stats
-    return CompanyStatsResponse()
+    company = CompanyService.get_company_by_user(db, current_user)
+    cid = company.id
+
+    row = db.execute(
+        text("""
+            SELECT
+                (SELECT count(*) FROM projects WHERE company_id = :cid) AS projects_posted,
+                (SELECT count(*) FROM applications a
+                    JOIN projects p ON p.id = a.project_id
+                    WHERE p.company_id = :cid AND a.status NOT IN ('applied','rejected','withdrawn')) AS students_selected,
+                (SELECT count(*) FROM applications a
+                    JOIN projects p ON p.id = a.project_id
+                    WHERE p.company_id = :cid AND a.status = 'completed') AS projects_completed,
+                (SELECT count(*) FROM projects WHERE company_id = :cid AND status = 'open') AS active_projects,
+                (SELECT count(*) FROM submissions su
+                    JOIN applications a ON a.id = su.application_id
+                    JOIN projects p ON p.id = a.project_id
+                    WHERE p.company_id = :cid AND su.id NOT IN (
+                        SELECT submission_id FROM evaluations
+                    )) AS pending_reviews
+        """),
+        {"cid": cid},
+    ).fetchone()
+
+    return CompanyStatsResponse(
+        projects_posted=int(row[0]),
+        students_selected=int(row[1]),
+        projects_completed=int(row[2]),
+        active_projects=int(row[3]),
+        pending_reviews=int(row[4]),
+    )

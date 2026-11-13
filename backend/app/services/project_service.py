@@ -2,15 +2,19 @@
 FR-PRJ-1 to FR-PRJ-8, FR-ORG-5, BR-1.
 Authorization order: role → ownership → state (AGENTS.md rule 6).
 """
+
+import json
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.errors import ForbiddenError, NotFoundError, ValidationError
+from app.core.errors import BadRequestError, ForbiddenError, NotFoundError, ValidationError
 from app.models.project import Project
 from app.models.user import Company
+from app.repositories.flag_repo import FlagRepository
 from app.repositories.project_repo import ProjectRepository
 from app.services.audit_service import AuditService
 
@@ -67,15 +71,20 @@ class ProjectService:
         # Replace milestones (if provided), otherwise add default
         milestones = data.get("milestones", [])
         if milestones:
-            ProjectRepository.replace_milestones(db, project.id, [m.model_dump() for m in milestones])
+            ProjectRepository.replace_milestones(
+                db, project.id, [m.model_dump() for m in milestones]
+            )
         else:
             from app.models.project import Milestone
-            db.add(Milestone(
-                project_id=project.id,
-                position=1,
-                title="Project Completion",
-                due_day_offset=data["duration_days"],
-            ))
+
+            db.add(
+                Milestone(
+                    project_id=project.id,
+                    position=1,
+                    title="Project Completion",
+                    due_day_offset=data["duration_days"],
+                )
+            )
 
         db.commit()
         db.refresh(project)
@@ -105,7 +114,15 @@ class ProjectService:
             )
 
         update_fields: dict = {}
-        for field in ("title", "description", "category", "difficulty", "duration_days", "max_selected", "application_deadline"):
+        for field in (
+            "title",
+            "description",
+            "category",
+            "difficulty",
+            "duration_days",
+            "max_selected",
+            "application_deadline",
+        ):
             if data.get(field) is not None:
                 update_fields[field] = data[field]
 
@@ -121,7 +138,9 @@ class ProjectService:
             ProjectRepository.replace_skills(db, project_id, data["skills"])
 
         if "milestones" in data and data["milestones"] is not None:
-            ProjectRepository.replace_milestones(db, project_id, [m.model_dump() for m in data["milestones"]])
+            ProjectRepository.replace_milestones(
+                db, project_id, [m.model_dump() for m in data["milestones"]]
+            )
 
         db.commit()
         db.refresh(project)
@@ -243,3 +262,37 @@ class ProjectService:
         db.commit()
         db.refresh(project)
         return project
+
+    @staticmethod
+    def report_project(
+        db: Session,
+        project_id: uuid.UUID,
+        reporter_id: uuid.UUID,
+        reason: str,
+        note: str | None = None,
+    ) -> dict[str, str]:
+        """FR-ADM-9: Create a manual flag for admin review."""
+        reason = reason.strip()
+        note = note.strip() if note else None
+        if not reason:
+            raise BadRequestError("reason is required.")
+
+        # Verify project exists
+        proj = db.execute(
+            text("SELECT id FROM projects WHERE id = :pid"),
+            {"pid": project_id},
+        ).fetchone()
+        if not proj:
+            raise NotFoundError("Project not found.")
+
+        flag_id = uuid.uuid4()
+        details_json = json.dumps(
+            {
+                "reason": reason,
+                "note": note,
+                "reported_by": str(reporter_id),
+            }
+        )
+        FlagRepository.create_project_report(db, flag_id, project_id, details_json)
+        db.commit()
+        return {"message": "Report submitted. An admin will review it.", "flag_id": str(flag_id)}

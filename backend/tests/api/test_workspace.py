@@ -1,6 +1,7 @@
 """Tests for Workspace API — T-WRK-01 through T-WRK-03, task progress, personal sub-tasks.
 Uses real PostgreSQL (AGENTS.md).
 """
+
 import uuid
 from datetime import datetime
 
@@ -34,31 +35,39 @@ def _setup_active_workspace(client: TestClient):
     student_h = _student_headers(client)
 
     # 1. Create project
-    p_res = client.post("/api/v1/companies/me/projects", json={
-        "title": f"Workspace Project {uuid.uuid4().hex[:6]}",
-        "description": "A workspace testing project with multiple milestones and tasks.",
-        "difficulty": "intermediate",
-        "duration_days": 14,
-        "max_selected": 2,
-    }, headers=nova_h)
+    p_res = client.post(
+        "/api/v1/companies/me/projects",
+        json={
+            "title": f"Workspace Project {uuid.uuid4().hex[:6]}",
+            "description": "A workspace testing project with multiple milestones and tasks.",
+            "difficulty": "intermediate",
+            "duration_days": 14,
+            "max_selected": 2,
+        },
+        headers=nova_h,
+    )
     assert p_res.status_code == 201, p_res.text
     pid = p_res.json()["id"]
 
     # 2. Add milestones with tasks
-    m_res = client.put(f"/api/v1/projects/{pid}/milestones", json={
-        "milestones": [
-            {
-                "title": "Milestone 1: Scaffold",
-                "due_day_offset": 4,
-                "tasks": [{"title": "Setup repository"}, {"title": "Configure database"}],
-            },
-            {
-                "title": "Milestone 2: Completion",
-                "due_day_offset": 14,
-                "tasks": [{"title": "Implement core endpoints"}],
-            },
-        ]
-    }, headers=nova_h)
+    m_res = client.put(
+        f"/api/v1/projects/{pid}/milestones",
+        json={
+            "milestones": [
+                {
+                    "title": "Milestone 1: Scaffold",
+                    "due_day_offset": 4,
+                    "tasks": [{"title": "Setup repository"}, {"title": "Configure database"}],
+                },
+                {
+                    "title": "Milestone 2: Completion",
+                    "due_day_offset": 14,
+                    "tasks": [{"title": "Implement core endpoints"}],
+                },
+            ]
+        },
+        headers=nova_h,
+    )
     assert m_res.status_code == 200, m_res.text
 
     # 3. Publish project
@@ -66,9 +75,13 @@ def _setup_active_workspace(client: TestClient):
     assert pub_res.status_code == 200, pub_res.text
 
     # 4. Student applies
-    app_res = client.post(f"/api/v1/projects/{pid}/applications", json={
-        "cover_note": "Ready to work on this!",
-    }, headers=student_h)
+    app_res = client.post(
+        f"/api/v1/projects/{pid}/applications",
+        json={
+            "cover_note": "Ready to work on this!",
+        },
+        headers=student_h,
+    )
     assert app_res.status_code == 201, app_res.text
     app_id = app_res.json()["id"]
 
@@ -123,26 +136,40 @@ class TestWorkspace:
 
         # Different student (Dev)
         dev_h = _student_headers(client, email="rohit@example.com")
-        unauth_checkin = client.post(f"/api/v1/applications/{app_id}/checkins", json={
-            "milestone_id": m_id,
-            "note": "Hacking into another student application",
-        }, headers=dev_h)
-        assert unauth_checkin.status_code == 404  # AGENTS.md rule 6: Another user's record returns 404
+        unauth_checkin = client.post(
+            f"/api/v1/applications/{app_id}/checkins",
+            json={
+                "milestone_id": m_id,
+                "note": "Hacking into another student application",
+            },
+            headers=dev_h,
+        )
+        assert (
+            unauth_checkin.status_code == 404
+        )  # AGENTS.md rule 6: Another user's record returns 404
 
         # Proper owner student can check in
-        checkin_res = client.post(f"/api/v1/applications/{app_id}/checkins", json={
-            "milestone_id": m_id,
-            "note": "Scaffold completed with full tests passing.",
-            "evidence_url": "https://github.com/example/repo/commit/123",
-        }, headers=student_h)
+        checkin_res = client.post(
+            f"/api/v1/applications/{app_id}/checkins",
+            json={
+                "milestone_id": m_id,
+                "note": "Scaffold completed with full tests passing.",
+                "evidence_url": "https://github.com/example/repo/commit/123",
+            },
+            headers=student_h,
+        )
         assert checkin_res.status_code == 201
         checkin_id = checkin_res.json()["id"]
 
         # Company reviews check-in
-        rev_res = client.post(f"/api/v1/checkins/{checkin_id}/review", json={
-            "status": "accepted",
-            "review_note": "Great job on the initial scaffold!",
-        }, headers=nova_h)
+        rev_res = client.post(
+            f"/api/v1/checkins/{checkin_id}/review",
+            json={
+                "status": "accepted",
+                "review_note": "Great job on the initial scaffold!",
+            },
+            headers=nova_h,
+        )
         assert rev_res.status_code == 200
         assert rev_res.json()["status"] == "accepted"
 
@@ -173,11 +200,15 @@ class TestWorkspace:
         subtask_id = subtask_res.json()["id"]
 
         # Attempt to delete company task -> 409 Conflict (FR-WRK-8)
-        del_comp = client.delete(f"/api/v1/applications/{app_id}/tasks/{company_task_id}", headers=student_h)
+        del_comp = client.delete(
+            f"/api/v1/applications/{app_id}/tasks/{company_task_id}", headers=student_h
+        )
         assert del_comp.status_code == 409
 
         # Student deletes own personal sub-task -> 204 No Content
-        del_sub = client.delete(f"/api/v1/applications/{app_id}/tasks/{subtask_id}", headers=student_h)
+        del_sub = client.delete(
+            f"/api/v1/applications/{app_id}/tasks/{subtask_id}", headers=student_h
+        )
         assert del_sub.status_code == 204
 
     def test_t_wrk_03_overdue_job_notifies_both_sides_once(self, client: TestClient):

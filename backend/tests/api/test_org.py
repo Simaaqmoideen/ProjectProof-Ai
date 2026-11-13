@@ -4,10 +4,13 @@ from fastapi.testclient import TestClient
 
 
 def get_admin_headers(client: TestClient) -> dict:
-    login_res = client.post("/api/v1/auth/login", json={
-        "email": "admin@projectproof.ai",
-        "password": "AdminSecure2026!",
-    })
+    login_res = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "admin@projectproof.ai",
+            "password": "AdminSecure2026!",
+        },
+    )
     token = login_res.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
@@ -15,20 +18,27 @@ def get_admin_headers(client: TestClient) -> dict:
 def test_t_org_01_pending_company_cannot_publish(client: TestClient):
     """T-ORG-01 (FR-ORG-2): Pending company tries to publish -> 403."""
     # BrightWave Tech is pending (created in seed)
-    login_res = client.post("/api/v1/auth/login", json={
-        "email": "brightwave.tech@gmail.com",
-        "password": "BrightWave2026!",
-    })
+    login_res = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "brightwave.tech@gmail.com",
+            "password": "BrightWave2026!",
+        },
+    )
     token = login_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     # Create draft project
-    proj_res = client.post("/api/v1/companies/me/projects", json={
-        "title": "BrightWave AI Tool",
-        "description": "Building an AI assistant prototype.",
-        "difficulty": "intermediate",
-        "duration_days": 14,
-    }, headers=headers)
+    proj_res = client.post(
+        "/api/v1/companies/me/projects",
+        json={
+            "title": "BrightWave AI Tool",
+            "description": "Building an AI assistant prototype.",
+            "difficulty": "intermediate",
+            "duration_days": 14,
+        },
+        headers=headers,
+    )
     assert proj_res.status_code == 201
     proj_id = proj_res.json()["id"]
 
@@ -46,39 +56,53 @@ def test_t_org_02_admin_approves_company_writes_audit_log(client: TestClient):
     suffix = uuid.uuid4().hex[:8]
     domain = f"nexustech{suffix}.io"
     email = f"startup{suffix}@{domain}"
-    client.post("/api/v1/auth/register", json={
-        "email": email,
-        "password": "ValidPassword2026!",
-        "role": "company",
-    })
+    client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "password": "ValidPassword2026!",
+            "role": "company",
+        },
+    )
 
-    login_res = client.post("/api/v1/auth/login", json={"email": email, "password": "ValidPassword2026!"})
+    login_res = client.post(
+        "/api/v1/auth/login", json={"email": email, "password": "ValidPassword2026!"}
+    )
     token = login_res.json()["access_token"]
     cmp_headers = {"Authorization": f"Bearer {token}"}
 
     # Verify email
     from app.core.security import create_email_verification_token
+
     # Directly verify in db via verify-email route
     user_id = login_res.json()["user"]["id"]
     verify_token = create_email_verification_token(user_id, email)
     client.post("/api/v1/auth/verify-email", json={"token": verify_token})
 
     # Register company (trust_score starts at 0 while pending, per BR-6)
-    cmp_reg = client.post("/api/v1/companies/json", json={
-        "name": f"Nexus Tech {suffix}",
-        "website": f"https://{domain}",
-        "description": "Cloud native infrastructure solutions",
-    }, headers=cmp_headers)
+    cmp_reg = client.post(
+        "/api/v1/companies/json",
+        json={
+            "name": f"Nexus Tech {suffix}",
+            "website": f"https://{domain}",
+            "description": "Cloud native infrastructure solutions",
+        },
+        headers=cmp_headers,
+    )
     assert cmp_reg.status_code == 201
     company_id = cmp_reg.json()["id"]
 
     # Admin approves; BR-6: trust score jumps to 50 on approval
-    approve_res = client.post(f"/api/v1/admin/companies/{company_id}/approve", headers=admin_headers)
+    approve_res = client.post(
+        f"/api/v1/admin/companies/{company_id}/approve", headers=admin_headers
+    )
     assert approve_res.status_code == 200
     assert approve_res.json()["status"] == "approved"
 
     # Check audit log contains actor_id and action (FR-ADM-5)
-    audit_res = client.get(f"/api/v1/admin/audit-log?entity_type=company&entity_id={company_id}", headers=admin_headers)
+    audit_res = client.get(
+        f"/api/v1/admin/audit-log?entity_type=company&entity_id={company_id}", headers=admin_headers
+    )
     assert audit_res.status_code == 200
     items = audit_res.json()["items"]
     assert len(items) >= 1
@@ -91,15 +115,21 @@ def test_t_org_03_duplicate_domain_registration_rejected(client: TestClient):
     """T-ORG-03 (FR-ORG-3): Second company registers with an active company's domain -> Rejected with conflict."""
     # Nova Labs is already active on domain novalabs.com
     email2 = "another_person@novalabs.com"
-    client.post("/api/v1/auth/register", json={
-        "email": email2,
-        "password": "ValidPassword2026!",
-        "role": "company",
-    })
-    login_res = client.post("/api/v1/auth/login", json={"email": email2, "password": "ValidPassword2026!"})
+    client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email2,
+            "password": "ValidPassword2026!",
+            "role": "company",
+        },
+    )
+    login_res = client.post(
+        "/api/v1/auth/login", json={"email": email2, "password": "ValidPassword2026!"}
+    )
     token = login_res.json()["access_token"]
 
     from app.core.security import create_email_verification_token
+
     user_id = login_res.json()["user"]["id"]
     verify_token = create_email_verification_token(user_id, email2)
     client.post("/api/v1/auth/verify-email", json={"token": verify_token})
@@ -139,57 +169,79 @@ def test_t_org_05_new_company_project_limit(client: TestClient):
     # Register a new unique company
     suffix = uuid.uuid4().hex[:8]
     email = f"lead_{suffix}@newcorp{suffix}.io"
-    client.post("/api/v1/auth/register", json={
-        "email": email,
-        "password": "ValidPassword2026!",
-        "role": "company",
-    })
-    login_res = client.post("/api/v1/auth/login", json={"email": email, "password": "ValidPassword2026!"})
+    client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "password": "ValidPassword2026!",
+            "role": "company",
+        },
+    )
+    login_res = client.post(
+        "/api/v1/auth/login", json={"email": email, "password": "ValidPassword2026!"}
+    )
     token = login_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     from app.core.security import create_email_verification_token
+
     user_id = login_res.json()["user"]["id"]
     verify_token = create_email_verification_token(user_id, email)
     client.post("/api/v1/auth/verify-email", json={"token": verify_token})
 
-    cmp_reg = client.post("/api/v1/companies/json", json={
-        "name": f"NewCorp {suffix}",
-        "website": f"https://newcorp{suffix}.io",
-        "description": "Tech agency",
-    }, headers=headers)
+    cmp_reg = client.post(
+        "/api/v1/companies/json",
+        json={
+            "name": f"NewCorp {suffix}",
+            "website": f"https://newcorp{suffix}.io",
+            "description": "Tech agency",
+        },
+        headers=headers,
+    )
     company_id = cmp_reg.json()["id"]
 
     # Approve company
     client.post(f"/api/v1/admin/companies/{company_id}/approve", headers=admin_headers)
 
     # Create and publish project 1
-    p1 = client.post("/api/v1/companies/me/projects", json={
-        "title": "Project 1",
-        "description": "First project description.",
-        "difficulty": "beginner",
-        "duration_days": 7,
-    }, headers=headers).json()
+    p1 = client.post(
+        "/api/v1/companies/me/projects",
+        json={
+            "title": "Project 1",
+            "description": "First project description.",
+            "difficulty": "beginner",
+            "duration_days": 7,
+        },
+        headers=headers,
+    ).json()
     pub1 = client.post(f"/api/v1/projects/{p1['id']}/publish", headers=headers)
     assert pub1.status_code == 200
 
     # Create and publish project 2
-    p2 = client.post("/api/v1/companies/me/projects", json={
-        "title": "Project 2",
-        "description": "Second project description.",
-        "difficulty": "intermediate",
-        "duration_days": 14,
-    }, headers=headers).json()
+    p2 = client.post(
+        "/api/v1/companies/me/projects",
+        json={
+            "title": "Project 2",
+            "description": "Second project description.",
+            "difficulty": "intermediate",
+            "duration_days": 14,
+        },
+        headers=headers,
+    ).json()
     pub2 = client.post(f"/api/v1/projects/{p2['id']}/publish", headers=headers)
     assert pub2.status_code == 200
 
     # Create project 3
-    p3 = client.post("/api/v1/companies/me/projects", json={
-        "title": "Project 3",
-        "description": "Third project description.",
-        "difficulty": "advanced",
-        "duration_days": 21,
-    }, headers=headers).json()
+    p3 = client.post(
+        "/api/v1/companies/me/projects",
+        json={
+            "title": "Project 3",
+            "description": "Third project description.",
+            "difficulty": "advanced",
+            "duration_days": 21,
+        },
+        headers=headers,
+    ).json()
 
     # Publishing project 3 should be blocked because limit is 2 open projects
     pub3 = client.post(f"/api/v1/projects/{p3['id']}/publish", headers=headers)
@@ -200,10 +252,13 @@ def test_t_org_05_new_company_project_limit(client: TestClient):
 def test_t_org_06_unapproved_recruiter_searches(client: TestClient):
     """T-ORG-06 (FR-ORG-6): Unapproved recruiter searches -> 403. Privacy by default (AGENTS.md rule 8)."""
     # Vikram Mehta from Apex is pending approval (from seed)
-    login_res = client.post("/api/v1/auth/login", json={
-        "email": "recruiter@apexsearch.com",
-        "password": "Recruiter2026!",
-    })
+    login_res = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "recruiter@apexsearch.com",
+            "password": "Recruiter2026!",
+        },
+    )
     token = login_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -223,37 +278,51 @@ def test_t_org_07_suspend_company_closes_open_projects(client: TestClient):
     suffix = uuid.uuid4().hex[:8]
     domain = f"suspendcorp{suffix}.com"
     email = f"owner{suffix}@{domain}"
-    client.post("/api/v1/auth/register", json={
-        "email": email,
-        "password": "ValidPassword2026!",
-        "role": "company",
-    })
-    login_res = client.post("/api/v1/auth/login", json={"email": email, "password": "ValidPassword2026!"})
+    client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "password": "ValidPassword2026!",
+            "role": "company",
+        },
+    )
+    login_res = client.post(
+        "/api/v1/auth/login", json={"email": email, "password": "ValidPassword2026!"}
+    )
     token = login_res.json()["access_token"]
     cmp_headers = {"Authorization": f"Bearer {token}"}
 
     from app.core.security import create_email_verification_token
+
     user_id = login_res.json()["user"]["id"]
     verify_token = create_email_verification_token(user_id, email)
     client.post("/api/v1/auth/verify-email", json={"token": verify_token})
 
-    cmp_reg = client.post("/api/v1/companies/json", json={
-        "name": f"Suspend Corp {suffix}",
-        "website": f"https://{domain}",
-        "description": "Company to be suspended",
-    }, headers=cmp_headers).json()
+    cmp_reg = client.post(
+        "/api/v1/companies/json",
+        json={
+            "name": f"Suspend Corp {suffix}",
+            "website": f"https://{domain}",
+            "description": "Company to be suspended",
+        },
+        headers=cmp_headers,
+    ).json()
     company_id = cmp_reg["id"]
 
     # Admin approves
     client.post(f"/api/v1/admin/companies/{company_id}/approve", headers=admin_headers)
 
     # Create and publish an open project
-    p = client.post("/api/v1/companies/me/projects", json={
-        "title": "Cloud Migration Project",
-        "description": "Cloud service deployment project.",
-        "difficulty": "intermediate",
-        "duration_days": 14,
-    }, headers=cmp_headers).json()
+    p = client.post(
+        "/api/v1/companies/me/projects",
+        json={
+            "title": "Cloud Migration Project",
+            "description": "Cloud service deployment project.",
+            "difficulty": "intermediate",
+            "duration_days": 14,
+        },
+        headers=cmp_headers,
+    ).json()
     pub_res = client.post(f"/api/v1/projects/{p['id']}/publish", headers=cmp_headers)
     assert pub_res.status_code == 200
 
@@ -269,6 +338,7 @@ def test_t_org_07_suspend_company_closes_open_projects(client: TestClient):
     # Verify company projects are closed
     from app.db import SessionLocal
     from app.models.project import Project
+
     db = SessionLocal()
     proj_in_db = db.query(Project).filter(Project.id == p["id"]).first()
     assert proj_in_db.status == "closed"
@@ -289,10 +359,13 @@ def test_fr_adm_05_audit_log_query(client: TestClient):
     assert len(data["items"]) > 0
 
     # Non-admin cannot query audit log (FR-AUTH-5, AGENTS.md rule 6)
-    stu_login = client.post("/api/v1/auth/login", json={
-        "email": "ananya@example.com",
-        "password": "StudentPass2026!",
-    })
+    stu_login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "ananya@example.com",
+            "password": "StudentPass2026!",
+        },
+    )
     stu_headers = {"Authorization": f"Bearer {stu_login.json()['access_token']}"}
     res_forbidden = client.get("/api/v1/admin/audit-log", headers=stu_headers)
     assert res_forbidden.status_code == 403
@@ -306,11 +379,14 @@ def test_fr_adm_06_suspend_reactivate_user(client: TestClient):
     pwd = "UserPass2026!"
 
     # Register user
-    client.post("/api/v1/auth/register", json={
-        "email": email,
-        "password": pwd,
-        "role": "student",
-    })
+    client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "password": pwd,
+            "role": "student",
+        },
+    )
     login_res = client.post("/api/v1/auth/login", json={"email": email, "password": pwd})
     assert login_res.status_code == 200
     user_id = login_res.json()["user"]["id"]
@@ -344,4 +420,3 @@ def test_fr_adm_06_suspend_reactivate_user(client: TestClient):
     # Login now succeeds
     success_login = client.post("/api/v1/auth/login", json={"email": email, "password": pwd})
     assert success_login.status_code == 200
-
